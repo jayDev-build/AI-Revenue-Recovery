@@ -16,8 +16,8 @@ public class RazorpayIntegrationService {
     private final RazorpayClient razorpayClient;
 
     public RazorpayIntegrationService(
-            @Value("") String keyId,
-            @Value("") String keySecret) throws RazorpayException {
+            @Value("Razorpay-keyId") String keyId,
+            @Value("Razorpay-keySecret") String keySecret) throws RazorpayException {
         this.razorpayClient = new RazorpayClient(keyId, keySecret);
     }
 
