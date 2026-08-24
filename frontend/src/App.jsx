@@ -6,6 +6,8 @@ const API_BASE = 'http://localhost:8080';
 function App() {
   const [bankHealth, setBankHealth] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState(null);
+  const [userId, setUserId] = useState(1);
+
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState('500');
 
@@ -40,12 +42,14 @@ function App() {
     setLoading(true);
     try {
       const payload = {
-        customerId: 1,
+        customerId: userId,
         amount: amount,
         method: 'UPI'
       };
       const res = await axios.post(`${API_BASE}/payments/initiate`, payload);
       setPaymentStatus(res.data);
+
+      console.log(res.data);
 
       if (res.data.razorpayOrderId) {
         openRazorpayCheckout(res.data);
@@ -59,7 +63,7 @@ function App() {
 
   const openRazorpayCheckout = (paymentData) => {
     const options = {
-      key: "rzp_test_dummykey123", // Enter the Key ID generated from the Dashboard
+      key: "rzp_test_TTaXtsmQ29Iwo0", // Enter the Key ID generated from the Dashboard
       amount: paymentData.amount * 100, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
       currency: "INR",
       name: "AI Revenue Recovery",
@@ -137,6 +141,17 @@ function App() {
               Initiate Checkout
             </h2>
             <form onSubmit={handleInitiatePayment} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1">USER-ID </label>
+                <input
+                  type="number"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-1">Amount (INR)</label>
                 <input
