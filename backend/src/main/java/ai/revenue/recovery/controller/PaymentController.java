@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("")
 public class PaymentController {
 
     private final PaymentDegradationService paymentService;
@@ -22,8 +22,8 @@ public class PaymentController {
     private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
 
     public PaymentController(PaymentDegradationService paymentService,
-                             DemoDataSeedingService seedingService,
-                             BankHealthSnapshotRepository bankHealthSnapshotRepository) {
+            DemoDataSeedingService seedingService,
+            BankHealthSnapshotRepository bankHealthSnapshotRepository) {
         this.paymentService = paymentService;
         this.seedingService = seedingService;
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
