@@ -7,7 +7,6 @@ function App() {
   const [bankHealth, setBankHealth] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [userId, setUserId] = useState(1);
-
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState('500');
 
@@ -16,7 +15,7 @@ function App() {
       const res = await axios.get(`${API_BASE}/bank-health`);
       setBankHealth(res.data);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to fetch bank health:', err);
     }
   };
 
@@ -49,8 +48,6 @@ function App() {
       const res = await axios.post(`${API_BASE}/payments/initiate`, payload);
       setPaymentStatus(res.data);
 
-      console.log(res.data);
-
       if (res.data.razorpayOrderId) {
         openRazorpayCheckout(res.data);
       }
@@ -62,16 +59,21 @@ function App() {
   };
 
   const openRazorpayCheckout = (paymentData) => {
+    if (!window.Razorpay) {
+      alert("Razorpay SDK failed to load. Ensure checkout.js is in index.html");
+      return;
+    }
+
     const options = {
-      key: "rzp_test_TTaXtsmQ29Iwo0", // Enter the Key ID generated from the Dashboard
-      amount: paymentData.amount * 100, // Amount is in currency subunits. Default currency is INR. Hence, 50000 refers to 50000 paise
+      key: "rzp_test_TTaXtsmQ29Iwo0",
+      // Convert amount to paise (e.g. 500 INR = 50000 Paise)
+      amount: Math.round(Number(paymentData.amount) * 100),
       currency: "INR",
       name: "AI Revenue Recovery",
       description: "Test Transaction",
       order_id: paymentData.razorpayOrderId,
       handler: function (response) {
         alert("Payment Successful! Payment ID: " + response.razorpay_payment_id);
-        // Here you would typically call your backend success callback
         checkStatus(paymentData.id);
       },
       prefill: {
@@ -83,12 +85,14 @@ function App() {
         color: "#3399cc"
       }
     };
+
     const rzp1 = new window.Razorpay(options);
     rzp1.on('payment.failed', function (response) {
       alert("Payment Failed: " + response.error.description);
       checkStatus(paymentData.id);
     });
     rzp1.open();
+    // Removed broken async axios.get block
   };
 
   const handleResolve = async (id) => {
@@ -111,7 +115,7 @@ function App() {
     } catch (err) {
       console.error(err);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen p-8 bg-slate-900 text-slate-100 font-sans">
