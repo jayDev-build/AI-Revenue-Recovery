@@ -6,6 +6,7 @@ import ai.revenue.recovery.entity.enums.PaymentMethod;
 import ai.revenue.recovery.repository.BankHealthSnapshotRepository;
 import ai.revenue.recovery.service.DemoDataSeedingService;
 import ai.revenue.recovery.service.PaymentDegradationService;
+import com.google.gson.JsonObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -51,6 +52,11 @@ public class PaymentController {
     @PostMapping("/payments/{id}/resolve")
     public ResponseEntity<PaymentAttempt> resolvePayment(@PathVariable Long id) {
         return ResponseEntity.ok(paymentService.resolvePayment(id));
+    }
+
+    @PostMapping("/razorpay/webhook")
+    public ResponseEntity<String> resolvePayment(@RequestBody Map<String, Object> payload) {
+        return ResponseEntity.ok(paymentService.updatePaymentStatus(payload));
     }
 
     @GetMapping("/bank-health")
