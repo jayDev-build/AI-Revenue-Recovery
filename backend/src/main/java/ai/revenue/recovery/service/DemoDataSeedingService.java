@@ -67,4 +67,46 @@ public class DemoDataSeedingService {
 
         paymentAttemptRepository.saveAll(attempts);
     }
+
+    public void seedBankFailures(String bankName, int failureCount) {
+        Customer customer = customerRepository.findById(1L).orElseGet(() -> {
+            Customer c = new Customer();
+            c.setName("Demo User");
+            c.setEmail("demo@example.com");
+            c.setPhoneNumber("+919999999999");
+            c.setCreatedAt(LocalDateTime.now());
+            return customerRepository.save(c);
+        });
+
+        List<PaymentAttempt> attempts = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        // Seed successful ones first to establish a baseline in the same window (optional, but good for realistic degradation)
+        for (int i = 0; i < 5; i++) {
+            PaymentAttempt attempt = new PaymentAttempt();
+            attempt.setCustomer(customer);
+            attempt.setAmount(new BigDecimal("500.00"));
+            attempt.setPaymentMethod(PaymentMethod.UPI);
+            attempt.setCustomerBank(bankName);
+            attempt.setStatus(PaymentStatus.CAPTURED);
+            attempt.setInitiatedAt(now.minusSeconds(40));
+            attempts.add(attempt);
+        }
+
+        // Seed the requested number of failures
+        for (int i = 0; i < failureCount; i++) {
+            PaymentAttempt attempt = new PaymentAttempt();
+            attempt.setCustomer(customer);
+            attempt.setAmount(new BigDecimal("500.00"));
+            attempt.setPaymentMethod(PaymentMethod.UPI);
+            attempt.setCustomerBank(bankName);
+            attempt.setStatus(PaymentStatus.FAILED);
+            attempt.setRazorpayOrderId("demo_seed_" + System.currentTimeMillis() + i);
+            attempt.setFailureReasonCode("BANK_NETWORK_DOWN");
+            attempt.setInitiatedAt(now.minusSeconds(10));
+            attempts.add(attempt);
+        }
+
+        paymentAttemptRepository.saveAll(attempts);
+    }
 }

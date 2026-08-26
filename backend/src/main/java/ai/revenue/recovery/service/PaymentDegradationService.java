@@ -40,18 +40,22 @@ public class PaymentDegradationService {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public PaymentAttempt initiatePayment(Long customerId, BigDecimal amount, PaymentMethod method) {
+    public PaymentAttempt initiatePayment(Long customerId, BigDecimal amount, PaymentMethod method, String bankName, boolean simulateDrop) {
         Customer customer = customerRepository.findById(customerId).orElseThrow();
 
         PaymentAttempt attempt = new PaymentAttempt();
         attempt.setCustomer(customer);
         attempt.setAmount(amount);
         attempt.setPaymentMethod(method);
-        attempt.setCustomerBank("Bank X"); // For demo purposes
+        attempt.setCustomerBank(bankName != null ? bankName : "Bank X");
         attempt.setInitiatedAt(LocalDateTime.now());
 
         try {
-            String orderId = razorpayService.createOrder(amount, "receipt_" + System.currentTimeMillis());
+            Map<String, String> notes = Map.of(
+                    "bank_name", attempt.getCustomerBank(),
+                    "simulate_drop", String.valueOf(simulateDrop)
+            );
+            String orderId = razorpayService.createOrder(amount, "receipt_" + System.currentTimeMillis(), notes);
             attempt.setRazorpayOrderId(orderId);
             // Simulate some payments getting stuck as AMBIGUOUS immediately (for demo)
             if (Math.random() < 0.15) {
@@ -74,7 +78,7 @@ public class PaymentDegradationService {
     public PaymentAttempt resolvePayment(Long id) {
         PaymentAttempt attempt = paymentAttemptRepository.findById(id).orElseThrow();
         
-        if (attempt.getStatus() != PaymentStatus.AMBIGUOUS) {
+        if (attempt.getStatus() != PaymentStatus.AMBIGUOUS && attempt.getStatus() != PaymentStatus.INITIATED) {
             return attempt;
         }
 
@@ -83,15 +87,23 @@ public class PaymentDegradationService {
             
             if (payment == null) {
                 // Not paid
-                markAsFailed(attempt, "PAYMENT_NOT_FOUND");
+                if (attempt.getStatus() == PaymentStatus.AMBIGUOUS) {
+                    markAsFailed(attempt, "PAYMENT_NOT_FOUND");
+                }
             } else {
                 String status = payment.get("status");
                 attempt.setRazorpayPaymentId(payment.get("id"));
                 if ("captured".equalsIgnoreCase(status) || "authorized".equalsIgnoreCase(status)) {
+                    PaymentStatus oldStatus = attempt.getStatus();
                     attempt.setStatus(PaymentStatus.CAPTURED);
                     attempt.setResolvedAt(LocalDateTime.now());
                     paymentAttemptRepository.save(attempt);
-                    writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.", "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
+                    
+                    if (oldStatus == PaymentStatus.INITIATED) {
+                        writeAuditLog(attempt, "RESOLVE_INITIATED", "Recovered a payment that was missing its acknowledgment.", "UPDATED_TO_CAPTURED", AuditOutcome.RECOVERED_LOST_ACK);
+                    } else {
+                        writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.", "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
+                    }
                 } else {
                     String errorReason = payment.has("error_reason") ? payment.get("error_reason") : "UNKNOWN_ERROR";
                     markAsFailed(attempt, errorReason);
@@ -139,17 +151,24 @@ public class PaymentDegradationService {
         Map<String, Object> payloadData = (Map<String, Object>) payload.get("payload");
         Map<String, Object> paymentWrapper = (Map<String, Object>) payloadData.get("payment");
         Map<String, Object> entity = (Map<String, Object>) paymentWrapper.get("entity");
+        Map<String, Object> notes = (Map<String, Object>) entity.get("notes");
 
         String paymentId = (String) entity.get("id");
         String orderId = (String) entity.get("order_id");
         Integer amount =  (Integer)entity.get("amount");
         String status = (String) entity.get("status");
 
+        if (notes != null && "true".equals(notes.get("simulate_drop"))) {
+            System.out.println("DEMO BYPASS: Webhook swallowed for testing. Order: " + orderId);
+            return status;
+        }
+
         String res = "payementId: " + paymentId + " orderId: " + orderId + " amount: " + amount + " status: " + status;
 
         PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
         if("captured".equalsIgnoreCase(status)){
             paymentAttempt.setStatus(PaymentStatus.CAPTURED);
+            paymentAttempt.setResolvedAt(LocalDateTime.now());
         }else if("authorized".equalsIgnoreCase(status)){
             paymentAttempt.setStatus(PaymentStatus.INITIATED);
         }else if("failed".equalsIgnoreCase(status)){
