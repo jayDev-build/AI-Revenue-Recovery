@@ -21,13 +21,22 @@ public class RazorpayIntegrationService {
         this.razorpayClient = new RazorpayClient(keyId, keySecret);
     }
 
-    public String createOrder(BigDecimal amount, String receiptId) {
+    public String createOrder(BigDecimal amount, String receiptId, java.util.Map<String, String> notes) {
         try {
             JSONObject orderRequest = new JSONObject();
             // amount in paise
             orderRequest.put("amount", amount.multiply(new BigDecimal(100)).intValue());
             orderRequest.put("currency", "INR");
             orderRequest.put("receipt", receiptId);
+
+            if (notes != null && !notes.isEmpty()) {
+                JSONObject notesObj = new JSONObject();
+                for (java.util.Map.Entry<String, String> entry : notes.entrySet()) {
+                    notesObj.put(entry.getKey(), entry.getValue());
+                }
+                orderRequest.put("notes", notesObj);
+            }
+
             Order order = razorpayClient.orders.create(orderRequest);
             return order.get("id");
         } catch (RazorpayException e) {

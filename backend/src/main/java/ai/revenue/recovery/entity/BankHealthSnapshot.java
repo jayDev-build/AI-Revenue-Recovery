@@ -25,4 +25,7 @@ public class BankHealthSnapshot {
     private BigDecimal successRate;
     private BigDecimal baselineSuccessRate;
     private Boolean isDegraded;
+    
+    @Column(columnDefinition = "TEXT")
+    private String aiSummary;
 }

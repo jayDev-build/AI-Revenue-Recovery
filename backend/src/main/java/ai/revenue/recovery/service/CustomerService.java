@@ -17,7 +17,6 @@ public class CustomerService {
         this.customerRepository = customerRepository;
     }
 
-
     public Customer createCustomer(CustomerSignUpRequest request) {
 
         Customer customer = Customer.builder()

@@ -21,7 +21,8 @@ public class BankHealthJob {
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
 
-    public BankHealthJob(PaymentAttemptRepository paymentAttemptRepository, BankHealthSnapshotRepository bankHealthSnapshotRepository) {
+    public BankHealthJob(PaymentAttemptRepository paymentAttemptRepository,
+            BankHealthSnapshotRepository bankHealthSnapshotRepository) {
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
     }
@@ -56,7 +57,7 @@ public class BankHealthJob {
 
             BigDecimal successRate = new BigDecimal(successCount)
                     .divide(new BigDecimal(totalAttempts), 4, RoundingMode.HALF_UP);
-            
+
             // Mock baseline for demo
             BigDecimal baselineRate = new BigDecimal("0.95");
 
