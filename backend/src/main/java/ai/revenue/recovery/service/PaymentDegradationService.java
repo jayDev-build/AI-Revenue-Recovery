@@ -12,10 +12,12 @@ import ai.revenue.recovery.repository.CustomerRepository;
 import ai.revenue.recovery.repository.PaymentAttemptRepository;
 import com.razorpay.Payment;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 public class PaymentDegradationService {
@@ -128,5 +130,36 @@ public class PaymentDegradationService {
         log.setAttemptNumber(1);
         log.setCreatedAt(LocalDateTime.now());
         auditLogRepository.save(log);
+    }
+
+    public String updatePaymentStatus(Map<String, Object> payload) {
+        String event = (String) payload.get("event");
+
+        // Extract nested objects by casting
+        Map<String, Object> payloadData = (Map<String, Object>) payload.get("payload");
+        Map<String, Object> paymentWrapper = (Map<String, Object>) payloadData.get("payment");
+        Map<String, Object> entity = (Map<String, Object>) paymentWrapper.get("entity");
+
+        String paymentId = (String) entity.get("id");
+        String orderId = (String) entity.get("order_id");
+        Integer amount =  (Integer)entity.get("amount");
+        String status = (String) entity.get("status");
+
+        String res = "payementId: " + paymentId + " orderId: " + orderId + " amount: " + amount + " status: " + status;
+
+        PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
+        if("captured".equalsIgnoreCase(status)){
+            paymentAttempt.setStatus(PaymentStatus.CAPTURED);
+        }else if("authorized".equalsIgnoreCase(status)){
+            paymentAttempt.setStatus(PaymentStatus.INITIATED);
+        }else if("failed".equalsIgnoreCase(status)){
+            paymentAttempt.setStatus(PaymentStatus.FAILED);
+        }else{
+            paymentAttempt.setStatus(PaymentStatus.AMBIGUOUS);
+        }
+
+        paymentAttemptRepository.save(paymentAttempt);
+        System.out.println(res);
+        return status;
     }
 }
