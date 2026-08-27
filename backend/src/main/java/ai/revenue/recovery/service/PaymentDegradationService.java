@@ -244,6 +244,7 @@ public class PaymentDegradationService {
         Object rawAmount = entity != null ? entity.get("amount") : null;
         String status = entity != null ? (String) entity.get("status") : null;
 
+
         if (notes != null && "true".equals(String.valueOf(notes.get("simulate_drop")))) {
             log.info("DEMO BYPASS: Webhook swallowed for testing. Order: {}", orderId);
             return status;
@@ -259,7 +260,7 @@ public class PaymentDegradationService {
             log.warn("Received webhook for untracked orderId: {}", orderId);
             return status;
         }
-
+        paymentAttempt.setRazorpayPaymentId(paymentId);
         if ("captured".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.CAPTURED);
             paymentAttempt.setResolvedAt(LocalDateTime.now());
