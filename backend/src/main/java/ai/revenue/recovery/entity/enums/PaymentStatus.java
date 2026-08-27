@@ -1,5 +1,10 @@
 package ai.revenue.recovery.entity.enums;
 
 public enum PaymentStatus {
-    INITIATED, AMBIGUOUS, CAPTURED, FAILED
+    CREATED,        //payment requested details note entered
+    AUTHORIZED,     //details for payments entered and authorized by razorpay
+    AMBIGUOUS,      //Ambiguous status
+    CAPTURED,       //payment succeeded
+    FAILED,         //payment failed
+    REFUNDED        //refunded
 }

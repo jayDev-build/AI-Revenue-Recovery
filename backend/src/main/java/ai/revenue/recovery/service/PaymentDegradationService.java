@@ -13,17 +13,25 @@ import ai.revenue.recovery.repository.BankHealthSnapshotRepository;
 import ai.revenue.recovery.repository.CustomerRepository;
 import ai.revenue.recovery.repository.PaymentAttemptRepository;
 import com.razorpay.Payment;
+import jakarta.persistence.EntityNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class PaymentDegradationService {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentDegradationService.class);
 
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final CustomerRepository customerRepository;
@@ -33,22 +41,33 @@ public class PaymentDegradationService {
     private final ChatClient chatClient;
 
     public PaymentDegradationService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
-            PaymentAttemptRepository paymentAttemptRepository,
-            CustomerRepository customerRepository,
-            AuditLogRepository auditLogRepository,
-            RazorpayIntegrationService razorpayService,
-            ChatClient.Builder chatClientBuilder) {
+                                     PaymentAttemptRepository paymentAttemptRepository,
+                                     CustomerRepository customerRepository,
+                                     AuditLogRepository auditLogRepository,
+                                     RazorpayIntegrationService razorpayService,
+                                     ChatClient.Builder chatClientBuilder) {
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
         this.auditLogRepository = auditLogRepository;
         this.razorpayService = razorpayService;
-        this.chatClient = chatClientBuilder.build();
+        this.chatClient = chatClientBuilder.defaultSystem("""
+            You are a payment database logger. Explain raw payment failure codes based on these states:
+            - Created: Request made, details unprocessed.
+            - Authorized: Funds approved, not captured.
+            - Captured: Payment complete and verified.
+            - Failed: Transaction failed, needs retry.
+            - Refunded: Captured amount reversed.
+            
+            CRITICAL: Provide a single, plain phrase under 15 words for a MySQL VARCHAR column. No punctuation, no markdown, no fluff.
+        """).build();
     }
 
+    @Transactional
     public PaymentAttempt initiatePayment(Long customerId, BigDecimal amount, PaymentMethod method, String bankName,
-            boolean simulateDrop) {
-        Customer customer = customerRepository.findById(customerId).orElseThrow();
+                                          boolean simulateDrop) {
+        Customer customer = customerRepository.findById(customerId)
+                .orElseThrow(() -> new EntityNotFoundException("Customer not found with ID: " + customerId));
 
         PaymentAttempt attempt = new PaymentAttempt();
         attempt.setCustomer(customer);
@@ -63,13 +82,14 @@ public class PaymentDegradationService {
                     "simulate_drop", String.valueOf(simulateDrop));
             String orderId = razorpayService.createOrder(amount, "receipt_" + System.currentTimeMillis(), notes);
             attempt.setRazorpayOrderId(orderId);
-            // Simulate some payments getting stuck as AMBIGUOUS immediately (for demo)
-            if (Math.random() < 0.15) {
+
+            if (Math.random() < 0.15 || simulateDrop) {
                 attempt.setStatus(PaymentStatus.AMBIGUOUS);
             } else {
-                attempt.setStatus(PaymentStatus.INITIATED);
+                attempt.setStatus(PaymentStatus.CREATED);
             }
         } catch (Exception e) {
+            log.error("Failed to create Razorpay order: {}", e.getMessage());
             attempt.setStatus(PaymentStatus.FAILED);
             attempt.setFailureReasonCode("ORDER_CREATION_FAILED");
         }
@@ -77,53 +97,86 @@ public class PaymentDegradationService {
         return paymentAttemptRepository.save(attempt);
     }
 
+    @Transactional(readOnly = true)
     public PaymentAttempt getPaymentStatus(Long id) {
-        return paymentAttemptRepository.findById(id).orElseThrow();
+        return paymentAttemptRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("PaymentAttempt not found with ID: " + id));
     }
 
+    @Transactional(readOnly = true)
     public PaymentAttempt getLatestPayment() {
         return paymentAttemptRepository.findFirstByOrderByInitiatedAtDesc();
     }
 
+    @Transactional
     public PaymentAttempt resolvePayment(Long id) {
-        PaymentAttempt attempt = paymentAttemptRepository.findById(id).orElseThrow();
+        PaymentAttempt attempt = paymentAttemptRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("PaymentAttempt not found with ID: " + id));
 
-        if (attempt.getStatus() != PaymentStatus.AMBIGUOUS && attempt.getStatus() != PaymentStatus.INITIATED) {
+        // 1. Skip terminal states
+        if (attempt.getStatus() == PaymentStatus.CAPTURED ||
+                attempt.getStatus() == PaymentStatus.FAILED ||
+                attempt.getStatus() == PaymentStatus.REFUNDED) {
             return attempt;
+        }
+
+        // 2. Check attempt limit BEFORE invoking external APIs (with NPE guard)
+        Optional<AuditLog> lastAudit = auditLogRepository.getLastAudit(attempt.getRazorpayOrderId());
+        if (lastAudit.isPresent() && Integer.valueOf(5).equals(lastAudit.get().getAttemptNumber())) {
+            attempt.setStatus(PaymentStatus.FAILED);
+            attempt.setResolvedAt(LocalDateTime.now());
+            writeAuditLog(
+                    attempt,
+                    "ATTEMPT_LIMIT_REACHED",
+                    "Maximum resolution attempt limit reached (5/5)",
+                    "MARKED_AS_FAILED",
+                    AuditOutcome.ATTEMPT_LIMIT_REACHED
+            );
+            return paymentAttemptRepository.save(attempt);
         }
 
         try {
             Payment payment = razorpayService.fetchPaymentStatus(attempt.getRazorpayOrderId());
 
             if (payment == null) {
-                // Not paid
-                if (attempt.getStatus() == PaymentStatus.AMBIGUOUS) {
+                if (attempt.getStatus() == PaymentStatus.AMBIGUOUS || attempt.getStatus() == PaymentStatus.CREATED) {
                     markAsFailed(attempt, "PAYMENT_NOT_FOUND");
                 }
-            } else {
-                String status = payment.get("status");
-                attempt.setRazorpayPaymentId(payment.get("id"));
-                if ("captured".equalsIgnoreCase(status) || "authorized".equalsIgnoreCase(status)) {
-                    PaymentStatus oldStatus = attempt.getStatus();
-                    attempt.setStatus(PaymentStatus.CAPTURED);
-                    attempt.setResolvedAt(LocalDateTime.now());
-                    paymentAttemptRepository.save(attempt);
-
-                    if (oldStatus == PaymentStatus.INITIATED) {
-                        writeAuditLog(attempt, "RESOLVE_INITIATED",
-                                "Recovered a payment that was missing its acknowledgment.", "UPDATED_TO_CAPTURED",
-                                AuditOutcome.RECOVERED_LOST_ACK);
-                    } else {
-                        writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.",
-                                "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
-                    }
-                } else {
-                    String errorReason = payment.has("error_reason") ? payment.get("error_reason") : "UNKNOWN_ERROR";
-                    markAsFailed(attempt, errorReason);
-                }
+                return attempt;
             }
+
+            String razorpayStatus = payment.get("status");
+            attempt.setRazorpayPaymentId(payment.get("id"));
+
+            // 3. Precise status mapping
+            if ("captured".equalsIgnoreCase(razorpayStatus)) {
+                PaymentStatus oldStatus = attempt.getStatus();
+                attempt.setStatus(PaymentStatus.CAPTURED);
+                attempt.setResolvedAt(LocalDateTime.now());
+
+                if (oldStatus == PaymentStatus.CREATED) {
+                    writeAuditLog(attempt, "RESOLVE_CREATED",
+                            "Recovered a payment that was missing its acknowledgment.", "UPDATED_TO_CAPTURED",
+                            AuditOutcome.RECOVERED_LOST_ACK);
+                } else {
+                    writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.",
+                            "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
+                }
+                return paymentAttemptRepository.save(attempt);
+
+            } else if ("failed".equalsIgnoreCase(razorpayStatus)) {
+                String errorReason = (payment.has("error_reason") && payment.get("error_reason") != null)
+                        ? payment.get("error_reason").toString()
+                        : "PAYMENT_FAILED";
+                markAsFailed(attempt, errorReason);
+
+            } else {
+                paymentAttemptRepository.save(attempt);
+            }
+
         } catch (Exception e) {
-            markAsFailed(attempt, "API_FETCH_FAILED");
+            log.error("Failed to fetch Razorpay status for attempt ID {}: {}", id, e.getMessage());
+            throw new RuntimeException("Transient error resolving payment ID: " + id, e);
         }
 
         return attempt;
@@ -135,57 +188,83 @@ public class PaymentDegradationService {
         attempt.setResolvedAt(LocalDateTime.now());
         paymentAttemptRepository.save(attempt);
 
-        String explanation = chatClient.prompt()
-                .user("Explain this payment failure reason code in plain, professional language for an audit log: "
-                        + reasonCode)
-                .call()
-                .content();
+        String explanation = "Payment resolved as failed with reason code: " + reasonCode;
+
+        try {
+            explanation = chatClient.prompt()
+                    .user(u -> u.text("Explain payment failure reason code: {reason_code}")
+                            .param("reason_code", reasonCode))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.warn("Failed to fetch AI explanation for reason code '{}': {}", reasonCode, e.getMessage());
+        }
 
         writeAuditLog(attempt, "STATUS_CHECK", explanation, "RETRY_SCHEDULED_OR_FAILED", AuditOutcome.FAILED);
     }
 
     private void writeAuditLog(PaymentAttempt attempt, String decision, String reasoning, String actionTaken,
-            AuditOutcome outcome) {
-        AuditLog log = new AuditLog();
-        log.setFlowType(FlowType.PAYMENT_DEGRADATION);
-        log.setEntityId(attempt.getId());
-        log.setEntityType("payment_attempt");
-        log.setDecision(decision);
-        log.setReasoning(reasoning);
-        log.setActionTaken(actionTaken);
-        log.setOutcome(outcome);
-        log.setAttemptNumber(1);
-        log.setCreatedAt(LocalDateTime.now());
-        auditLogRepository.save(log);
+                               AuditOutcome outcome) {
+        Optional<AuditLog> lastLog = auditLogRepository.getLastAudit(attempt.getRazorpayOrderId());
+
+        int nextAttemptCount = lastLog
+                .map(log -> log.getAttemptNumber() != null ? log.getAttemptNumber() + 1 : 1)
+                .orElse(1);
+
+        AuditLog logEntity = new AuditLog();
+        logEntity.setFlowType(FlowType.PAYMENT_DEGRADATION);
+        logEntity.setEntityId(attempt.getId());
+        logEntity.setEntityType("payment_attempt");
+        logEntity.setDecision(decision);
+        logEntity.setReasoning(reasoning);
+        logEntity.setActionTaken(actionTaken);
+        logEntity.setOutcome(outcome);
+        logEntity.setAttemptNumber(nextAttemptCount);
+        logEntity.setCreatedAt(LocalDateTime.now());
+        logEntity.setPaymentOrderId(attempt.getRazorpayOrderId());
+
+        auditLogRepository.save(logEntity);
     }
 
+    @Transactional
+    @SuppressWarnings("unchecked")
     public String updatePaymentStatus(Map<String, Object> payload) {
-        String event = (String) payload.get("event");
+        if (payload == null || !payload.containsKey("payload")) {
+            log.warn("Invalid webhook payload received.");
+            return "INVALID_PAYLOAD";
+        }
 
-        // Extract nested objects by casting
         Map<String, Object> payloadData = (Map<String, Object>) payload.get("payload");
         Map<String, Object> paymentWrapper = (Map<String, Object>) payloadData.get("payment");
         Map<String, Object> entity = (Map<String, Object>) paymentWrapper.get("entity");
-        Map<String, Object> notes = (Map<String, Object>) entity.get("notes");
+        Map<String, Object> notes = entity != null ? (Map<String, Object>) entity.get("notes") : null;
 
-        String paymentId = (String) entity.get("id");
-        String orderId = (String) entity.get("order_id");
-        Integer amount = (Integer) entity.get("amount");
-        String status = (String) entity.get("status");
+        String paymentId = entity != null ? (String) entity.get("id") : null;
+        String orderId = entity != null ? (String) entity.get("order_id") : null;
+        Object rawAmount = entity != null ? entity.get("amount") : null;
+        String status = entity != null ? (String) entity.get("status") : null;
 
-        if (notes != null && "true".equals(notes.get("simulate_drop"))) {
-            System.out.println("DEMO BYPASS: Webhook swallowed for testing. Order: " + orderId);
+        if (notes != null && "true".equals(String.valueOf(notes.get("simulate_drop")))) {
+            log.info("DEMO BYPASS: Webhook swallowed for testing. Order: {}", orderId);
             return status;
         }
 
-        String res = "payementId: " + paymentId + " orderId: " + orderId + " amount: " + amount + " status: " + status;
+        if (orderId == null) {
+            log.warn("Webhook missing order_id for paymentId: {}", paymentId);
+            return status;
+        }
 
         PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
+        if (paymentAttempt == null) {
+            log.warn("Received webhook for untracked orderId: {}", orderId);
+            return status;
+        }
+
         if ("captured".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.CAPTURED);
             paymentAttempt.setResolvedAt(LocalDateTime.now());
         } else if ("authorized".equalsIgnoreCase(status)) {
-            paymentAttempt.setStatus(PaymentStatus.INITIATED);
+            paymentAttempt.setStatus(PaymentStatus.AUTHORIZED);
         } else if ("failed".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.FAILED);
         } else {
@@ -193,25 +272,27 @@ public class PaymentDegradationService {
         }
 
         paymentAttemptRepository.save(paymentAttempt);
-        System.out.println(res);
+        log.info("Webhook updated attempt ID {} to status {}", paymentAttempt.getId(), status);
         return status;
     }
 
+    @Transactional(readOnly = true)
     public List<BankHealthSnapshot> getLatestBankHealth() {
         List<BankHealthSnapshot> allSnapshots = bankHealthSnapshotRepository.findAll();
-        Map<String, BankHealthSnapshot> latestSnapshots = new java.util.HashMap<>();
+        Map<String, BankHealthSnapshot> latestSnapshots = new HashMap<>();
+
         for (BankHealthSnapshot snapshot : allSnapshots) {
             BankHealthSnapshot existing = latestSnapshots.get(snapshot.getBankName());
             if (existing == null || snapshot.getId() > existing.getId()) {
                 latestSnapshots.put(snapshot.getBankName(), snapshot);
             }
         }
-        java.time.LocalDateTime oneMinuteAgo = java.time.LocalDateTime.now().minusMinutes(1);
-        List<BankHealthSnapshot> adjustedSnapshots = new java.util.ArrayList<>();
+
+        LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        List<BankHealthSnapshot> adjustedSnapshots = new ArrayList<>();
 
         for (BankHealthSnapshot snapshot : latestSnapshots.values()) {
             if (snapshot.getWindowEnd() != null && snapshot.getWindowEnd().isBefore(oneMinuteAgo)) {
-                // If there has been no transactions in the last minute, reset to 100% health
                 BankHealthSnapshot healthy = new BankHealthSnapshot();
                 healthy.setId(snapshot.getId());
                 healthy.setBankName(snapshot.getBankName());
@@ -220,7 +301,7 @@ public class PaymentDegradationService {
                 healthy.setWindowEnd(snapshot.getWindowEnd());
                 healthy.setTotalAttempts(0);
                 healthy.setSuccessCount(0);
-                healthy.setSuccessRate(java.math.BigDecimal.ONE);
+                healthy.setSuccessRate(BigDecimal.ONE);
                 healthy.setBaselineSuccessRate(snapshot.getBaselineSuccessRate());
                 healthy.setIsDegraded(false);
                 healthy.setAiSummary(null);

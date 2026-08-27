@@ -23,6 +23,8 @@ public class AuditLog {
     private String entityType;
     private String decision;
 
+    private String paymentOrderId;
+
     @Column(columnDefinition = "TEXT")
     private String reasoning;
 
