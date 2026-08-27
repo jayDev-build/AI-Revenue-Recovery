@@ -75,6 +75,10 @@ public class PaymentDegradationService {
         return paymentAttemptRepository.findById(id).orElseThrow();
     }
 
+    public PaymentAttempt getLatestPayment() {
+        return paymentAttemptRepository.findFirstByOrderByInitiatedAtDesc();
+    }
+
     public PaymentAttempt resolvePayment(Long id) {
         PaymentAttempt attempt = paymentAttemptRepository.findById(id).orElseThrow();
         

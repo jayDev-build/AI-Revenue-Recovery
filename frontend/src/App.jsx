@@ -9,6 +9,7 @@ function App() {
   const [bankHealth, setBankHealth] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState(null);
+  const [highlightedBanks, setHighlightedBanks] = useState({});
   
   const [userId, setUserId] = useState(1);
   const [amount, setAmount] = useState('500');
@@ -20,15 +21,32 @@ function App() {
 
   const fetchBankHealth = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/bank-health`);
-      // Filter to keep only the latest snapshot per bank
-      const latestSnapshots = {};
-      res.data.forEach(snapshot => {
-        if (!latestSnapshots[snapshot.bankName] || snapshot.id > latestSnapshots[snapshot.bankName].id) {
-          latestSnapshots[snapshot.bankName] = snapshot;
+      const res = await axios.get(`${API_BASE}/api/bank-health/latest`);
+      setBankHealth(current => {
+        const newMap = {};
+        res.data.forEach(b => newMap[b.bankName] = b);
+        
+        const newlyHighlighted = {};
+        current.forEach(oldB => {
+          const newB = newMap[oldB.bankName];
+          if (newB && (newB.successRate !== oldB.successRate || newB.isDegraded !== oldB.isDegraded)) {
+            newlyHighlighted[oldB.bankName] = true;
+          }
+        });
+        
+        if (Object.keys(newlyHighlighted).length > 0) {
+          setHighlightedBanks(prev => ({ ...prev, ...newlyHighlighted }));
+          setTimeout(() => {
+            setHighlightedBanks(prev => {
+              const updated = { ...prev };
+              Object.keys(newlyHighlighted).forEach(k => delete updated[k]);
+              return updated;
+            });
+          }, 1500);
         }
+        
+        return res.data;
       });
-      setBankHealth(Object.values(latestSnapshots));
     } catch (err) {
       console.error('Failed to fetch bank health:', err);
     }
@@ -36,22 +54,40 @@ function App() {
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/audit-logs/recent`);
+      const res = await axios.get(`${API_BASE}/api/audit-logs/recent`);
       setAuditLogs(res.data);
     } catch (err) {
       console.error('Failed to fetch audit logs:', err);
     }
   };
 
+  const fetchLatestPayment = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/api/payments/latest`);
+      if (res.data) {
+        setPaymentStatus(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch latest payment:', err);
+    }
+  };
+
   useEffect(() => {
-    fetchBankHealth();
-    fetchAuditLogs();
+    const syncData = async () => {
+      await Promise.all([
+        fetchBankHealth(),
+        fetchAuditLogs(),
+        fetchLatestPayment()
+      ]);
+    };
+
+    syncData();
     
-    // Poll for updates every 5 seconds
+    // Auto-polling synchronization every 3 seconds
     const interval = setInterval(() => {
-      fetchBankHealth();
-      fetchAuditLogs();
-    }, 5000);
+      syncData();
+    }, 3000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -159,9 +195,16 @@ function App() {
         {/* Header & Demo Control Bar */}
         <header className="flex flex-col md:flex-row justify-between items-center pb-6 border-b border-slate-700 gap-4">
           <div>
-            <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              AI Revenue Recovery
-            </h1>
+            <div className="flex items-center space-x-4">
+              <h1 className="text-4xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                AI Revenue Recovery
+              </h1>
+              <div className="flex items-center px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.2)]">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-ping absolute"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 mr-2 relative"></div>
+                <span className="text-[11px] font-bold text-green-400 tracking-wider uppercase">Live Syncing</span>
+              </div>
+            </div>
             <p className="text-slate-400 mt-2">Flow 1: Payment Degradation & Lost Acknowledgment</p>
           </div>
           
@@ -320,7 +363,7 @@ function App() {
                     const isDegraded = bank.successRate < 0.70;
                     const pct = (bank.successRate * 100).toFixed(0);
                     return (
-                      <div key={bank.id} className={`p-4 rounded-xl border ${isDegraded ? 'bg-red-900/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'} transition-all`}>
+                      <div key={bank.id} className={`p-4 rounded-xl border transition-all duration-700 ${highlightedBanks[bank.bankName] ? 'ring-2 ring-purple-500 scale-[1.02] shadow-[0_0_15px_rgba(168,85,247,0.5)]' : ''} ${isDegraded ? 'bg-red-900/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'}`}>
                         <div className="flex justify-between items-center mb-2">
                           <h4 className="font-bold text-slate-200">{bank.bankName}</h4>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${isDegraded ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>

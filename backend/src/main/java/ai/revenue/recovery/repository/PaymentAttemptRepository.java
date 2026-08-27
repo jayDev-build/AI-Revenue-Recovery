@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, Long> {
     PaymentAttempt findByRazorpayOrderId(String orderId);
+    PaymentAttempt findFirstByOrderByInitiatedAtDesc();
 }
