@@ -10,12 +10,12 @@ function App() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [highlightedBanks, setHighlightedBanks] = useState({});
-  
+
   const [userId, setUserId] = useState(1);
   const [amount, setAmount] = useState('500');
   const [checkoutBank, setCheckoutBank] = useState('HDFC UPI');
   const [simulateDrop, setSimulateDrop] = useState(false);
-  
+
   const [seedBank, setSeedBank] = useState('HDFC UPI');
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +25,7 @@ function App() {
       setBankHealth(current => {
         const newMap = {};
         res.data.forEach(b => newMap[b.bankName] = b);
-        
+
         const newlyHighlighted = {};
         current.forEach(oldB => {
           const newB = newMap[oldB.bankName];
@@ -33,7 +33,7 @@ function App() {
             newlyHighlighted[oldB.bankName] = true;
           }
         });
-        
+
         if (Object.keys(newlyHighlighted).length > 0) {
           setHighlightedBanks(prev => ({ ...prev, ...newlyHighlighted }));
           setTimeout(() => {
@@ -44,7 +44,7 @@ function App() {
             });
           }, 1500);
         }
-        
+
         return res.data;
       });
     } catch (err) {
@@ -82,12 +82,12 @@ function App() {
     };
 
     syncData();
-    
+
     // Auto-polling synchronization every 3 seconds
     const interval = setInterval(() => {
       syncData();
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -157,9 +157,16 @@ function App() {
     };
 
     const rzp1 = new window.Razorpay(options);
+
     rzp1.on('payment.failed', function (response) {
       checkStatus(paymentData.id);
     });
+
+    rzp1.on('payment.success', function (response) {
+      console.log(response);
+      checkStatus(paymentData.id);
+    });
+
     rzp1.open();
   };
 
@@ -207,11 +214,11 @@ function App() {
             </div>
             <p className="text-slate-400 mt-2">Flow 1: Payment Degradation & Lost Acknowledgment</p>
           </div>
-          
+
           <div className="flex items-center space-x-3 bg-slate-800 p-3 rounded-xl border border-slate-700">
             <span className="text-sm font-bold text-slate-400">DEMO ACTIONS:</span>
-            <select 
-              value={seedBank} 
+            <select
+              value={seedBank}
               onChange={(e) => setSeedBank(e.target.value)}
               className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none"
             >
@@ -255,7 +262,7 @@ function App() {
                     <label className="block text-sm font-medium text-slate-400 mb-1">User ID</label>
                     <input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100" />
                   </div>
-                  <div> 
+                  <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">Amount (INR)</label>
                     <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-slate-100" />
                   </div>
@@ -269,11 +276,11 @@ function App() {
                 </div>
 
                 <div className="flex items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                  <input 
-                    type="checkbox" 
-                    id="simulateDrop" 
-                    checked={simulateDrop} 
-                    onChange={(e) => setSimulateDrop(e.target.checked)}
+                  <input
+                    type="checkbox"
+                    id="simulateDrop"
+                    checked={simulateDrop}
+                    onChange={(e) => setSimulateDrop(!simulateDrop)}
                     className="w-4 h-4 text-purple-600 bg-slate-900 border-slate-600 rounded focus:ring-purple-500 focus:ring-2"
                   />
                   <label htmlFor="simulateDrop" className="ml-3 text-sm font-medium text-slate-300">
@@ -290,11 +297,10 @@ function App() {
             {/* Payment Status Box */}
             {paymentStatus && (
               <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl relative overflow-hidden transition-all duration-500">
-                <div className={`absolute top-0 left-0 w-1 h-full ${
-                  paymentStatus.status === 'CAPTURED' ? 'bg-green-500' :
+                <div className={`absolute top-0 left-0 w-1 h-full ${paymentStatus.status === 'CAPTURED' ? 'bg-green-500' :
                   paymentStatus.status === 'INITIATED' ? 'bg-yellow-500' :
-                  paymentStatus.status === 'FAILED' ? 'bg-red-500' : 'bg-slate-500'
-                }`}></div>
+                    paymentStatus.status === 'FAILED' ? 'bg-red-500' : 'bg-slate-500'
+                  }`}></div>
                 <div className="pl-4">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex justify-between items-center">
                     Latest Attempt Status
@@ -302,7 +308,7 @@ function App() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-y-3 text-sm mb-5">
                     <span className="text-slate-500">Attempt ID:</span>
                     <span className="font-mono text-slate-300 text-right">{paymentStatus.id}</span>
@@ -310,12 +316,11 @@ function App() {
                     <span className="font-mono text-blue-400 text-right truncate" title={paymentStatus.razorpayOrderId}>{paymentStatus.razorpayOrderId || 'N/A'}</span>
                     <span className="text-slate-500 font-medium">Status:</span>
                     <div className="text-right">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold inline-block ${
-                        paymentStatus.status === 'INITIATED' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold inline-block ${paymentStatus.status === 'INITIATED' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
                         paymentStatus.status === 'CAPTURED' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                        paymentStatus.status === 'FAILED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                        'bg-slate-700 text-slate-300'
-                      }`}>
+                          paymentStatus.status === 'FAILED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                            'bg-slate-700 text-slate-300'
+                        }`}>
                         {paymentStatus.status}
                       </span>
                     </div>
@@ -346,7 +351,7 @@ function App() {
 
           {/* Right Panel: Health & Logs */}
           <div className="space-y-6">
-            
+
             {/* Bank Health Grid */}
             <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
@@ -370,7 +375,7 @@ function App() {
                             {isDegraded ? 'CRITICAL DIP' : 'NORMAL'}
                           </span>
                         </div>
-                        
+
                         <div className="mb-1 flex justify-between text-xs">
                           <span className="text-slate-500">Success Rate</span>
                           <span className={isDegraded ? 'text-red-400 font-mono font-bold' : 'text-green-400 font-mono font-bold'}>{pct}%</span>
@@ -403,7 +408,7 @@ function App() {
                 <svg className="w-6 h-6 mr-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Real-Time Audit Log
               </h2>
-              
+
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 {auditLogs.length === 0 ? (
                   <p className="text-slate-500 text-center py-8 text-sm">No audit logs available.</p>
