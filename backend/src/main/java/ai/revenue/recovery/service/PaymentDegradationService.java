@@ -1,6 +1,7 @@
 package ai.revenue.recovery.service;
 
 import ai.revenue.recovery.entity.AuditLog;
+import ai.revenue.recovery.entity.BankHealthSnapshot;
 import ai.revenue.recovery.entity.Customer;
 import ai.revenue.recovery.entity.PaymentAttempt;
 import ai.revenue.recovery.entity.enums.AuditOutcome;
@@ -8,6 +9,7 @@ import ai.revenue.recovery.entity.enums.FlowType;
 import ai.revenue.recovery.entity.enums.PaymentMethod;
 import ai.revenue.recovery.entity.enums.PaymentStatus;
 import ai.revenue.recovery.repository.AuditLogRepository;
+import ai.revenue.recovery.repository.BankHealthSnapshotRepository;
 import ai.revenue.recovery.repository.CustomerRepository;
 import ai.revenue.recovery.repository.PaymentAttemptRepository;
 import com.razorpay.Payment;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -24,15 +27,18 @@ public class PaymentDegradationService {
 
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final CustomerRepository customerRepository;
+    private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
     private final AuditLogRepository auditLogRepository;
     private final RazorpayIntegrationService razorpayService;
     private final ChatClient chatClient;
 
-    public PaymentDegradationService(PaymentAttemptRepository paymentAttemptRepository,
-                                     CustomerRepository customerRepository,
-                                     AuditLogRepository auditLogRepository,
-                                     RazorpayIntegrationService razorpayService,
-                                     ChatClient.Builder chatClientBuilder) {
+    public PaymentDegradationService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
+            PaymentAttemptRepository paymentAttemptRepository,
+            CustomerRepository customerRepository,
+            AuditLogRepository auditLogRepository,
+            RazorpayIntegrationService razorpayService,
+            ChatClient.Builder chatClientBuilder) {
+        this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
         this.auditLogRepository = auditLogRepository;
@@ -40,7 +46,8 @@ public class PaymentDegradationService {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public PaymentAttempt initiatePayment(Long customerId, BigDecimal amount, PaymentMethod method, String bankName, boolean simulateDrop) {
+    public PaymentAttempt initiatePayment(Long customerId, BigDecimal amount, PaymentMethod method, String bankName,
+            boolean simulateDrop) {
         Customer customer = customerRepository.findById(customerId).orElseThrow();
 
         PaymentAttempt attempt = new PaymentAttempt();
@@ -53,8 +60,7 @@ public class PaymentDegradationService {
         try {
             Map<String, String> notes = Map.of(
                     "bank_name", attempt.getCustomerBank(),
-                    "simulate_drop", String.valueOf(simulateDrop)
-            );
+                    "simulate_drop", String.valueOf(simulateDrop));
             String orderId = razorpayService.createOrder(amount, "receipt_" + System.currentTimeMillis(), notes);
             attempt.setRazorpayOrderId(orderId);
             // Simulate some payments getting stuck as AMBIGUOUS immediately (for demo)
@@ -67,7 +73,7 @@ public class PaymentDegradationService {
             attempt.setStatus(PaymentStatus.FAILED);
             attempt.setFailureReasonCode("ORDER_CREATION_FAILED");
         }
-        
+
         return paymentAttemptRepository.save(attempt);
     }
 
@@ -81,14 +87,14 @@ public class PaymentDegradationService {
 
     public PaymentAttempt resolvePayment(Long id) {
         PaymentAttempt attempt = paymentAttemptRepository.findById(id).orElseThrow();
-        
+
         if (attempt.getStatus() != PaymentStatus.AMBIGUOUS && attempt.getStatus() != PaymentStatus.INITIATED) {
             return attempt;
         }
 
         try {
             Payment payment = razorpayService.fetchPaymentStatus(attempt.getRazorpayOrderId());
-            
+
             if (payment == null) {
                 // Not paid
                 if (attempt.getStatus() == PaymentStatus.AMBIGUOUS) {
@@ -102,11 +108,14 @@ public class PaymentDegradationService {
                     attempt.setStatus(PaymentStatus.CAPTURED);
                     attempt.setResolvedAt(LocalDateTime.now());
                     paymentAttemptRepository.save(attempt);
-                    
+
                     if (oldStatus == PaymentStatus.INITIATED) {
-                        writeAuditLog(attempt, "RESOLVE_INITIATED", "Recovered a payment that was missing its acknowledgment.", "UPDATED_TO_CAPTURED", AuditOutcome.RECOVERED_LOST_ACK);
+                        writeAuditLog(attempt, "RESOLVE_INITIATED",
+                                "Recovered a payment that was missing its acknowledgment.", "UPDATED_TO_CAPTURED",
+                                AuditOutcome.RECOVERED_LOST_ACK);
                     } else {
-                        writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.", "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
+                        writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.",
+                                "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
                     }
                 } else {
                     String errorReason = payment.has("error_reason") ? payment.get("error_reason") : "UNKNOWN_ERROR";
@@ -127,14 +136,16 @@ public class PaymentDegradationService {
         paymentAttemptRepository.save(attempt);
 
         String explanation = chatClient.prompt()
-                .user("Explain this payment failure reason code in plain, professional language for an audit log: " + reasonCode)
+                .user("Explain this payment failure reason code in plain, professional language for an audit log: "
+                        + reasonCode)
                 .call()
                 .content();
 
         writeAuditLog(attempt, "STATUS_CHECK", explanation, "RETRY_SCHEDULED_OR_FAILED", AuditOutcome.FAILED);
     }
 
-    private void writeAuditLog(PaymentAttempt attempt, String decision, String reasoning, String actionTaken, AuditOutcome outcome) {
+    private void writeAuditLog(PaymentAttempt attempt, String decision, String reasoning, String actionTaken,
+            AuditOutcome outcome) {
         AuditLog log = new AuditLog();
         log.setFlowType(FlowType.PAYMENT_DEGRADATION);
         log.setEntityId(attempt.getId());
@@ -159,7 +170,7 @@ public class PaymentDegradationService {
 
         String paymentId = (String) entity.get("id");
         String orderId = (String) entity.get("order_id");
-        Integer amount =  (Integer)entity.get("amount");
+        Integer amount = (Integer) entity.get("amount");
         String status = (String) entity.get("status");
 
         if (notes != null && "true".equals(notes.get("simulate_drop"))) {
@@ -170,19 +181,55 @@ public class PaymentDegradationService {
         String res = "payementId: " + paymentId + " orderId: " + orderId + " amount: " + amount + " status: " + status;
 
         PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
-        if("captured".equalsIgnoreCase(status)){
+        if ("captured".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.CAPTURED);
             paymentAttempt.setResolvedAt(LocalDateTime.now());
-        }else if("authorized".equalsIgnoreCase(status)){
+        } else if ("authorized".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.INITIATED);
-        }else if("failed".equalsIgnoreCase(status)){
+        } else if ("failed".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.FAILED);
-        }else{
+        } else {
             paymentAttempt.setStatus(PaymentStatus.AMBIGUOUS);
         }
 
         paymentAttemptRepository.save(paymentAttempt);
         System.out.println(res);
         return status;
+    }
+
+    public List<BankHealthSnapshot> getLatestBankHealth() {
+        List<BankHealthSnapshot> allSnapshots = bankHealthSnapshotRepository.findAll();
+        Map<String, BankHealthSnapshot> latestSnapshots = new java.util.HashMap<>();
+        for (BankHealthSnapshot snapshot : allSnapshots) {
+            BankHealthSnapshot existing = latestSnapshots.get(snapshot.getBankName());
+            if (existing == null || snapshot.getId() > existing.getId()) {
+                latestSnapshots.put(snapshot.getBankName(), snapshot);
+            }
+        }
+        java.time.LocalDateTime oneMinuteAgo = java.time.LocalDateTime.now().minusMinutes(1);
+        List<BankHealthSnapshot> adjustedSnapshots = new java.util.ArrayList<>();
+
+        for (BankHealthSnapshot snapshot : latestSnapshots.values()) {
+            if (snapshot.getWindowEnd() != null && snapshot.getWindowEnd().isBefore(oneMinuteAgo)) {
+                // If there has been no transactions in the last minute, reset to 100% health
+                BankHealthSnapshot healthy = new BankHealthSnapshot();
+                healthy.setId(snapshot.getId());
+                healthy.setBankName(snapshot.getBankName());
+                healthy.setPaymentMethod(snapshot.getPaymentMethod());
+                healthy.setWindowStart(snapshot.getWindowStart());
+                healthy.setWindowEnd(snapshot.getWindowEnd());
+                healthy.setTotalAttempts(0);
+                healthy.setSuccessCount(0);
+                healthy.setSuccessRate(java.math.BigDecimal.ONE);
+                healthy.setBaselineSuccessRate(snapshot.getBaselineSuccessRate());
+                healthy.setIsDegraded(false);
+                healthy.setAiSummary(null);
+                adjustedSnapshots.add(healthy);
+            } else {
+                adjustedSnapshots.add(snapshot);
+            }
+        }
+
+        return adjustedSnapshots;
     }
 }

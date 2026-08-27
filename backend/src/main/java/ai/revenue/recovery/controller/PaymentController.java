@@ -92,39 +92,7 @@ public class PaymentController {
 
     @GetMapping("/api/bank-health/latest")
     public ResponseEntity<List<BankHealthSnapshot>> getLatestBankHealthApi() {
-        List<BankHealthSnapshot> allSnapshots = bankHealthSnapshotRepository.findAll();
-        Map<String, BankHealthSnapshot> latestSnapshots = new java.util.HashMap<>();
-        for (BankHealthSnapshot snapshot : allSnapshots) {
-            BankHealthSnapshot existing = latestSnapshots.get(snapshot.getBankName());
-            if (existing == null || snapshot.getId() > existing.getId()) {
-                latestSnapshots.put(snapshot.getBankName(), snapshot);
-            }
-        }
-        java.time.LocalDateTime oneMinuteAgo = java.time.LocalDateTime.now().minusMinutes(1);
-        List<BankHealthSnapshot> adjustedSnapshots = new java.util.ArrayList<>();
-        
-        for (BankHealthSnapshot snapshot : latestSnapshots.values()) {
-            if (snapshot.getWindowEnd() != null && snapshot.getWindowEnd().isBefore(oneMinuteAgo)) {
-                // If there has been no transactions in the last minute, reset to 100% health
-                BankHealthSnapshot healthy = new BankHealthSnapshot();
-                healthy.setId(snapshot.getId());
-                healthy.setBankName(snapshot.getBankName());
-                healthy.setPaymentMethod(snapshot.getPaymentMethod());
-                healthy.setWindowStart(snapshot.getWindowStart());
-                healthy.setWindowEnd(snapshot.getWindowEnd());
-                healthy.setTotalAttempts(0);
-                healthy.setSuccessCount(0);
-                healthy.setSuccessRate(java.math.BigDecimal.ONE);
-                healthy.setBaselineSuccessRate(snapshot.getBaselineSuccessRate());
-                healthy.setIsDegraded(false);
-                healthy.setAiSummary(null);
-                adjustedSnapshots.add(healthy);
-            } else {
-                adjustedSnapshots.add(snapshot);
-            }
-        }
-
-        return ResponseEntity.ok(adjustedSnapshots);
+        return ResponseEntity.ok(paymentService.getLatestBankHealth());
     }
 
     @GetMapping("/bank-health")
