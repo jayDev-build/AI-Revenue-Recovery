@@ -6,6 +6,7 @@ import ai.revenue.recovery.entity.Requests.CustomerSignUpRequest;
 import ai.revenue.recovery.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -25,6 +26,7 @@ public class CustomerService {
                 .password(request.getPassword())
                 .name(request.getName())
                 .createdAt(LocalDateTime.now())
+                .recovered(new BigDecimal(0))
                 .build();
 
         customer = customerRepository.save(customer);

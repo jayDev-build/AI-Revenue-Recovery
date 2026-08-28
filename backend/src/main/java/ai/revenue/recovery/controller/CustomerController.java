@@ -15,6 +15,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.List;
 
@@ -76,5 +77,11 @@ public class CustomerController {
 
 
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie.toString()).body(loginResponse);
+    }
+
+    @GetMapping("/api/recovered-amount/{id}")
+    public ResponseEntity<BigDecimal> getRecoveredAmount(@PathVariable Long id){
+        BigDecimal res = customerRepository.findById(id).get().getRecovered();
+        return ResponseEntity.ok(res);
     }
 }
