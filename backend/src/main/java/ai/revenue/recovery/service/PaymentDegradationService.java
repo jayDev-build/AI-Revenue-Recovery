@@ -38,6 +38,7 @@ public class PaymentDegradationService {
     private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
     private final AuditLogRepository auditLogRepository;
     private final RazorpayIntegrationService razorpayService;
+    private final CustomerService customerService;
     private final ChatClient chatClient;
 
     public PaymentDegradationService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
@@ -45,12 +46,14 @@ public class PaymentDegradationService {
                                      CustomerRepository customerRepository,
                                      AuditLogRepository auditLogRepository,
                                      RazorpayIntegrationService razorpayService,
+                                     CustomerService customerService,
                                      ChatClient.Builder chatClientBuilder) {
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
         this.auditLogRepository = auditLogRepository;
         this.razorpayService = razorpayService;
+        this.customerService = customerService;
         this.chatClient = chatClientBuilder.defaultSystem("""
             You are a payment database logger. Explain raw payment failure codes based on these states:
             - Created: Request made, details unprocessed.
@@ -162,6 +165,9 @@ public class PaymentDegradationService {
                     writeAuditLog(attempt, "STATUS_CHECK", "Payment was successfully captured by Razorpay.",
                             "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
                 }
+
+                Customer customer = attempt.getCustomer();
+                customer.setRecovered(customer.getRecovered().add(attempt.getAmount()));
                 return paymentAttemptRepository.save(attempt);
 
             } else if ("failed".equalsIgnoreCase(razorpayStatus)) {

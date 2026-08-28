@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, use } from 'react';
 import { Header } from './components/Header';
 import { CheckoutForm } from './components/CheckoutForm';
 import { PaymentStatusCard } from './components/PaymentStatusCard';
 import { BankHealthGrid } from './components/BankHealthGrid';
 import { AuditLogFeed } from './components/AuditLogFeed';
+import RecoveredRevenueCard from './components/RecoveredRevenueCard';
 import {
   fetchBankHealthApi,
   fetchAuditLogsApi,
@@ -11,7 +12,8 @@ import {
   seedFailuresApi,
   initiatePaymentApi,
   resolvePaymentApi,
-  checkPaymentStatusApi
+  checkPaymentStatusApi,
+  getRecoveredAmount
 } from './services/api';
 
 const BANK_OPTIONS = ['HDFC UPI', 'ICICI NetBanking', 'SBI UPI', 'Bank X'];
@@ -29,6 +31,8 @@ function App() {
 
   const [seedBank, setSeedBank] = useState('HDFC UPI');
   const [loading, setLoading] = useState(false);
+
+  const [recovered, setRecovered] = useState(0);
 
   const fetchBankHealth = async () => {
     try {
@@ -152,7 +156,23 @@ function App() {
     try {
       const res = await resolvePaymentApi(id);
       setPaymentStatus(res.data);
-      fetchAuditLogs();
+      await fetchAuditLogs();
+      await handleResolveAmount(userId);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+
+  };
+
+  const handleResolveAmount = async (id) => {
+    setLoading(true);
+    try {
+      const res = await getRecoveredAmount(id);
+      console.log(res);
+      setRecovered(res.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -209,6 +229,7 @@ function App() {
           </div>
 
           <div className="space-y-6">
+            <RecoveredRevenueCard amount={recovered} userId={userId} handleResolveAmount={handleResolveAmount} />
             <BankHealthGrid bankHealth={bankHealth} highlightedBanks={highlightedBanks} />
             <AuditLogFeed auditLogs={auditLogs} />
           </div>
