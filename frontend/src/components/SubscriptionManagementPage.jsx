@@ -3,11 +3,13 @@ import SubscriptionForm from "./SubscriptionForm";
 import SubscriptionList from "./SubscriptionList";
 import SubscriptionTransactions from "./SubscriptionTransactions";
 import { getAllSubscriptionList } from "../services/api";
+import { Navigate, useNavigate } from "react-router-dom";
 
 export default function SubscriptionManagementPage() {
     const [subscriptions, setSubscriptions] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
     // 1. Fetch Subscriptions and Transactions on initial mount
     const fetchData = async () => {
@@ -65,6 +67,12 @@ export default function SubscriptionManagementPage() {
                     </p>
                 </div>
                 <button
+                    onClick={() => navigate("/bank/pending")}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold text-white"
+                >
+                    View Pending Bank Queue
+                </button>
+                <button
                     onClick={fetchData}
                     className="self-start md:self-auto px-4 py-2 bg-slate-900 border border-slate-700 hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-colors flex items-center gap-2"
                 >
@@ -97,6 +105,7 @@ export default function SubscriptionManagementPage() {
                     </div>
                 </div>
             )}
+
         </div>
     );
 }

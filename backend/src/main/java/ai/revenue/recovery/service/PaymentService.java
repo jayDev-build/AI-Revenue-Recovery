@@ -1,17 +1,11 @@
 package ai.revenue.recovery.service;
 
-import ai.revenue.recovery.entity.AuditLog;
-import ai.revenue.recovery.entity.BankHealthSnapshot;
-import ai.revenue.recovery.entity.Customer;
-import ai.revenue.recovery.entity.PaymentAttempt;
+import ai.revenue.recovery.entity.*;
 import ai.revenue.recovery.entity.enums.AuditOutcome;
 import ai.revenue.recovery.entity.enums.FlowType;
 import ai.revenue.recovery.entity.enums.PaymentMethod;
 import ai.revenue.recovery.entity.enums.PaymentStatus;
-import ai.revenue.recovery.repository.AuditLogRepository;
-import ai.revenue.recovery.repository.BankHealthSnapshotRepository;
-import ai.revenue.recovery.repository.CustomerRepository;
-import ai.revenue.recovery.repository.PaymentAttemptRepository;
+import ai.revenue.recovery.repository.*;
 import com.razorpay.Payment;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
@@ -29,30 +23,33 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class PaymentDegradationService {
+public class PaymentService {
 
-    private static final Logger log = LoggerFactory.getLogger(PaymentDegradationService.class);
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final CustomerRepository customerRepository;
     private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
     private final AuditLogRepository auditLogRepository;
     private final RazorpayIntegrationService razorpayService;
+    private final SubscriptionRepository subscriptionRepository;
     private final CustomerService customerService;
     private final ChatClient chatClient;
 
-    public PaymentDegradationService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
-                                     PaymentAttemptRepository paymentAttemptRepository,
-                                     CustomerRepository customerRepository,
-                                     AuditLogRepository auditLogRepository,
-                                     RazorpayIntegrationService razorpayService,
-                                     CustomerService customerService,
-                                     ChatClient.Builder chatClientBuilder) {
+    public PaymentService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
+                          PaymentAttemptRepository paymentAttemptRepository,
+                          CustomerRepository customerRepository,
+                          AuditLogRepository auditLogRepository,
+                          RazorpayIntegrationService razorpayService,
+                          SubscriptionRepository subscriptionRepository,
+                          CustomerService customerService,
+                          ChatClient.Builder chatClientBuilder) {
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
         this.auditLogRepository = auditLogRepository;
         this.razorpayService = razorpayService;
+        this.subscriptionRepository = subscriptionRepository;
         this.customerService = customerService;
         this.chatClient = chatClientBuilder.defaultSystem("""
             You are a payment database logger. Explain raw payment failure codes based on these states:
@@ -209,7 +206,7 @@ public class PaymentDegradationService {
         writeAuditLog(attempt, "STATUS_CHECK", explanation, "RETRY_SCHEDULED_OR_FAILED", AuditOutcome.FAILED);
     }
 
-    private void writeAuditLog(PaymentAttempt attempt, String decision, String reasoning, String actionTaken,
+    public void writeAuditLog(PaymentAttempt attempt, String decision, String reasoning, String actionTaken,
                                AuditOutcome outcome) {
         Optional<AuditLog> lastLog = auditLogRepository.getLastAudit(attempt.getRazorpayOrderId());
 
@@ -319,5 +316,55 @@ public class PaymentDegradationService {
         }
 
         return adjustedSnapshots;
+    }
+
+    @Transactional
+    public PaymentAttempt processApprovedSubscriptionPayment(PaymentAttempt attempt) {
+        try {
+            Subscription subscription = attempt.getSubscription();
+            Map<String, String> notes = Map.of(
+                    "subscription_id", subscription != null ? String.valueOf(subscription.getId()) : "",
+                    "customer_id", attempt.getCustomer() != null ? String.valueOf(attempt.getCustomer().getId()) : ""
+            );
+
+            String receipt = "sub_rcpt_" + (subscription != null ? subscription.getId() : "0") + "_" + System.currentTimeMillis();
+
+            // 1. Initiate Order on Razorpay now that bank has approved
+            String orderId = razorpayService.createOrder(attempt.getAmount(), receipt, notes);
+            attempt.setRazorpayOrderId(orderId);
+            attempt.setStatus(PaymentStatus.CAPTURED);
+            attempt.setResolvedAt(LocalDateTime.now());
+
+            // 2. Update subscription schedule
+            if (subscription != null && subscription.getTimeSpan() != null) {
+                subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
+                subscriptionRepository.save(subscription);
+            }
+
+            // 3. Update customer recovered balance & Audit
+            if (attempt.getCustomer() != null) {
+                Customer customer = attempt.getCustomer();
+                customer.setRecovered(customer.getRecovered().add(attempt.getAmount()));
+                customerRepository.save(customer);
+            }
+
+            writeAuditLog(attempt, "BANK_APPROVED", "Payment approved by Bank Simulator and captured.",
+                    "UPDATED_TO_CAPTURED", AuditOutcome.SUCCESS);
+
+        } catch (Exception e) {
+            log.error("Failed to process approved payment for attempt ID {}: {}", attempt.getId(), e.getMessage());
+            attempt.setStatus(PaymentStatus.FAILED);
+            attempt.setFailureReasonCode("ORDER_CREATION_FAILED");
+            attempt.setResolvedAt(LocalDateTime.now());
+
+            writeAuditLog(attempt, "ORDER_FAILED", e.getMessage(), "MARKED_AS_FAILED", AuditOutcome.FAILED);
+        }
+
+        return paymentAttemptRepository.save(attempt);
+    }
+
+    public List<PaymentAttempt> getPendingSubscription(){
+        return paymentAttemptRepository.findByStatusInAndSubscriptionNotNull(
+                List.of(PaymentStatus.PENDING, PaymentStatus.CREATED));
     }
 }

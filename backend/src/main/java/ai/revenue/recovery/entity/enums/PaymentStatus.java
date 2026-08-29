@@ -6,5 +6,5 @@ public enum PaymentStatus {
     AMBIGUOUS,      //Ambiguous status
     CAPTURED,       //payment succeeded
     FAILED,         //payment failed
-    REFUNDED        //refunded
+    PENDING, REFUNDED        //refunded
 }
