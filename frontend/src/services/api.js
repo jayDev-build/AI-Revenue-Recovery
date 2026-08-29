@@ -14,3 +14,5 @@ export const getRecoveredAmount = (id) => axios.get(`${API_BASE}/api/recovered-a
 export const createSubscriptionApi = (payload) => axios.post(`${API_BASE}/api/create-subscription`, payload);
 export const getAllSubscriptionList = () => axios.get(`${API_BASE}/api/subscriptions`);
 export const getAllPendingBankRequests = () => axios.get(`${API_BASE}/api/bank/pending-requests`)
+export const bankSubscriptionResponse = (payload) => axios.post(`${API_BASE}/api/bank/callback`, payload);
+export const getAllSubscriptionTransactions = () => axios.get(`${API_BASE}/api/subscriptions/transactions`)

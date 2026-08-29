@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAllPendingBankRequests } from "../services/api";
+import { getAllPendingBankRequests, bankSubscriptionResponse } from "../services/api";
 
 const BANK_RESPONSES = [
     { code: "SUCCESS", label: "200 - Success / Approved" },
@@ -52,22 +52,18 @@ export default function PendingBankRequestsPage() {
     const handleSendResponse = async (item) => {
         const responseCode = selectedResponses[item.id] || "SUCCESS";
         setSubmittingIds((prev) => ({ ...prev, [item.id]: true }));
-
+        console.log(item);
         const payload = {
             subscriptionId: item.subscription ? item.subscription.id : null,
             razorpayOrderId: item.razorpayOrderId,
-            bankTransactionId: "BANK_TXN_" + Math.floor(100000 + Math.random() * 900000),
+            // bankTransactionId: "BANK_TXN_" + Math.floor(100000 + Math.random() * 900000),
             amount: item.amount,
             responseCode: responseCode,
             message: `Manual simulation decision: ${responseCode}`
         };
 
         try {
-            const res = await fetch("/api/bank/callback", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
+            const res = await bankSubscriptionResponse(payload);
 
             if (res.status === 200) {
                 setPendingRequests((prev) => prev.filter((req) => req.id !== item.id));

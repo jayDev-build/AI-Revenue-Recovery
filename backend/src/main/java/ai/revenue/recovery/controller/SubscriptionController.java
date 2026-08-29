@@ -1,5 +1,6 @@
 package ai.revenue.recovery.controller;
 
+import ai.revenue.recovery.entity.PaymentAttempt;
 import ai.revenue.recovery.entity.Requests.SubscriptionRequest;
 import ai.revenue.recovery.entity.Responses.SubscriptionResponse;
 import ai.revenue.recovery.entity.Subscription;
@@ -31,5 +32,10 @@ public class SubscriptionController {
     @GetMapping("/subscriptions")
     public ResponseEntity<List<Subscription>> getAllSubscription(){
         return ResponseEntity.ok(subscriptionService.getAllSubscriptions());
+    }
+
+    @GetMapping("/subscriptions/transactions")
+    public ResponseEntity<List<PaymentAttempt>> getAllSubscriptionTransactions(){
+        return ResponseEntity.ok(subscriptionService.getAllSubscriptionTransactions());
     }
 }
