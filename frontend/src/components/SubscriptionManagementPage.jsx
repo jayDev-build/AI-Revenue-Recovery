@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import SubscriptionForm from "./SubscriptionForm";
 import SubscriptionList from "./SubscriptionList";
 import SubscriptionTransactions from "./SubscriptionTransactions";
-import { getAllSubscriptionList } from "../services/api";
-import { Navigate, useNavigate } from "react-router-dom";
+import { getAllSubscriptionList, getAllSubscriptionTransactions } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 export default function SubscriptionManagementPage() {
     const [subscriptions, setSubscriptions] = useState([]);
@@ -16,21 +16,19 @@ export default function SubscriptionManagementPage() {
         try {
             const [subRes, txnRes] = await Promise.all([
                 getAllSubscriptionList(),
-                // fetch("/api/payments/transactions")
+                getAllSubscriptionTransactions()
             ]);
 
-            // console.log(subRes)
 
             if (subRes.status === 200) {
                 const subData = await subRes.data;
                 setSubscriptions(subData);
-                // console.log(subData);
             }
 
-            // if (txnRes.ok) {
-            //     const txnData = await txnRes.json();
-            //     setTransactions(txnData);
-            // }
+            if (txnRes.status === 200) {
+                const txnData = await txnRes.data;
+                setTransactions(txnData);
+            }
         } catch (err) {
             console.error("Error loading subscription dashboard data:", err);
         } finally {

@@ -367,4 +367,8 @@ public class PaymentService {
         return paymentAttemptRepository.findByStatusInAndSubscriptionNotNull(
                 List.of(PaymentStatus.PENDING, PaymentStatus.CREATED));
     }
+
+    public List<PaymentAttempt> getAllSubscriptionTransactions() {
+        return paymentAttemptRepository.findBySubscriptionNotNullAndStatusNotIn(List.of(PaymentStatus.PENDING, PaymentStatus.CREATED));
+    }
 }
