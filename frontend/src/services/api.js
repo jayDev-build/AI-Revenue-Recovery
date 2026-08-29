@@ -13,3 +13,4 @@ export const checkPaymentStatusApi = (id) => axios.get(`${API_BASE}/payments/${i
 export const getRecoveredAmount = (id) => axios.get(`${API_BASE}/api/recovered-amount/${id}`);
 export const createSubscriptionApi = (payload) => axios.post(`${API_BASE}/api/create-subscription`, payload);
 export const getAllSubscriptionList = () => axios.get(`${API_BASE}/api/subscriptions`);
+export const getAllPendingBankRequests = () => axios.get(`${API_BASE}/api/bank/pending-requests`)

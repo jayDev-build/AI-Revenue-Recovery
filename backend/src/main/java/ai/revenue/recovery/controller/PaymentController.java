@@ -7,13 +7,11 @@ import ai.revenue.recovery.entity.enums.PaymentMethod;
 import ai.revenue.recovery.repository.AuditLogRepository;
 import ai.revenue.recovery.repository.BankHealthSnapshotRepository;
 import ai.revenue.recovery.service.DemoDataSeedingService;
-import ai.revenue.recovery.service.PaymentDegradationService;
-import com.google.gson.JsonObject;
+import ai.revenue.recovery.service.PaymentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -21,15 +19,15 @@ import java.util.Map;
 @RequestMapping("")
 public class PaymentController {
 
-    private final PaymentDegradationService paymentService;
+    private final PaymentService paymentService;
     private final DemoDataSeedingService seedingService;
     private final BankHealthSnapshotRepository bankHealthSnapshotRepository;
     private final AuditLogRepository auditLogRepository;
 
-    public PaymentController(PaymentDegradationService paymentService,
-            DemoDataSeedingService seedingService,
-            BankHealthSnapshotRepository bankHealthSnapshotRepository,
-            AuditLogRepository auditLogRepository) {
+    public PaymentController(PaymentService paymentService,
+                             DemoDataSeedingService seedingService,
+                             BankHealthSnapshotRepository bankHealthSnapshotRepository,
+                             AuditLogRepository auditLogRepository) {
         this.paymentService = paymentService;
         this.seedingService = seedingService;
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
