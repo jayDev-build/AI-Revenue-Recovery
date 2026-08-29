@@ -5,8 +5,10 @@ import ai.revenue.recovery.entity.PaymentAttempt;
 import ai.revenue.recovery.entity.Requests.SubscriptionRequest;
 import ai.revenue.recovery.entity.Subscription;
 import ai.revenue.recovery.entity.enums.SubscriptionStatus;
+import ai.revenue.recovery.repository.PaymentAttemptRepository;
 import ai.revenue.recovery.repository.SubscriptionRepository;
 import jakarta.persistence.EntityNotFoundException;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,13 +25,16 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final CustomerService customerService;
     private final BankSimulatorService bankSimulatorService;
+    private final PaymentService paymentService;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                CustomerService customerService,
-                               BankSimulatorService bankSimulatorService) {
+                               BankSimulatorService bankSimulatorService,
+                               PaymentService paymentService) {
         this.subscriptionRepository = subscriptionRepository;
         this.customerService = customerService;
         this.bankSimulatorService = bankSimulatorService;
+        this.paymentService = paymentService;
     }
 
     /**
@@ -107,5 +112,9 @@ public class SubscriptionService {
                 log.error("Failed to queue payment attempt for subscription ID {}: {}", subscription.getId(), e.getMessage());
             }
         }
+    }
+
+    public List<PaymentAttempt> getAllSubscriptionTransactions() {
+        return paymentService.getAllSubscriptionTransactions();
     }
 }
