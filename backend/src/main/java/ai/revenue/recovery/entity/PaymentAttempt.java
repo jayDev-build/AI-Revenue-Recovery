@@ -33,6 +33,10 @@ public class PaymentAttempt {
     @Enumerated(EnumType.STRING)
     private PaymentStatus status;
 
+    @ManyToOne()
+    @JoinColumn(name = "subscription_id")
+    private Subscription subscription;
+
     private String failureReasonCode;
     private LocalDateTime initiatedAt;
     private LocalDateTime resolvedAt;
