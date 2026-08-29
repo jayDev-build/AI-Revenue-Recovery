@@ -4,7 +4,7 @@ import ai.revenue.recovery.entity.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "subscription")
@@ -27,5 +27,8 @@ public class Subscription {
     @Enumerated(EnumType.STRING)
     private SubscriptionStatus status;
 
-    private LocalDate nextChargeDate;
+    private String description;
+    private Integer timeSpan;
+
+    private LocalDateTime nextChargeDate;
 }
