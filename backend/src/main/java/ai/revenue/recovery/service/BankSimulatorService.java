@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BankSimulatorService {
@@ -23,16 +24,19 @@ public class BankSimulatorService {
 
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PaymentService paymentService;
+    private final RazorpayIntegrationService razorpayService;
 
     public BankSimulatorService(PaymentAttemptRepository paymentAttemptRepository,
-                                PaymentService paymentService) {
+                                PaymentService paymentService,
+                                RazorpayIntegrationService razorpayService) {
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.paymentService = paymentService;
+        this.razorpayService = razorpayService;
     }
 
     /**
-     * Step 1: Queues a PENDING payment attempt for the Bank Simulator UI.
-     * Razorpay order creation is deferred until bank approval.
+     * Step 1: Generates Razorpay Order ID and queues a PENDING payment attempt
+     * for the Bank Simulator UI.
      */
     @Transactional
     public PaymentAttempt initiateSubscriptionPayment(Subscription subscription) {
@@ -51,26 +55,41 @@ public class BankSimulatorService {
         attempt.setInitiatedAt(LocalDateTime.now());
         attempt.setStatus(PaymentStatus.PENDING); // Queuing for simulator UI
 
+        try {
+            Map<String, String> notes = Map.of(
+                    "subscription_id", String.valueOf(subscription.getId()),
+                    "customer_id", customer != null ? String.valueOf(customer.getId()) : ""
+            );
+
+            String receipt = "sub_rcpt_" + subscription.getId() + "_" + System.currentTimeMillis();
+
+            // Create order on Razorpay to get razorpayOrderId upfront
+            String orderId = razorpayService.createOrder(subscription.getPlanAmount(), receipt, notes);
+            attempt.setRazorpayOrderId(orderId);
+
+        } catch (Exception e) {
+            log.error("Failed to create Razorpay order for subscription ID {}: {}", subscription.getId(), e.getMessage());
+            attempt.setStatus(PaymentStatus.FAILED);
+            attempt.setFailureReasonCode("ORDER_CREATION_FAILED");
+        }
+
         return paymentAttemptRepository.save(attempt);
     }
 
-    /**
-     * Step 2: Processes bank simulator response.
-     * On SUCCESS, hands off execution to PaymentService.
-     */
     @Transactional
     public void processBankCallback(BankCallbackPayload payload) {
         if (payload == null || payload.getRazorpayOrderId() == null) {
-            throw new IllegalArgumentException("Invalid callback payload");
+            throw new IllegalArgumentException("Invalid callback payload or missing Razorpay Order ID");
         }
 
         PaymentAttempt attempt = paymentAttemptRepository.findByRazorpayOrderId(payload.getRazorpayOrderId());
         if (attempt == null) {
-            throw new RuntimeException("Payment attempt not found for order/attempt ID: " + payload.getRazorpayOrderId());
+            throw new RuntimeException("Payment attempt not found for order ID: " + payload.getRazorpayOrderId());
         }
 
         if (payload.getResponseCode() == BankResponseCode.SUCCESS) {
-            log.info("Bank simulator approved payment attempt ID {}. Triggering PaymentService.", attempt.getId());
+            log.info("Bank simulator approved payment attempt ID {}.", attempt.getId());
+            attempt.setRazorpayPaymentId(payload.getRazorpayOrderId());
             paymentService.processApprovedSubscriptionPayment(attempt);
         } else {
             log.warn("Bank simulator rejected payment attempt ID {}", attempt.getId());
