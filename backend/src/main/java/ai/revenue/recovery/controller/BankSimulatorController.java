@@ -22,7 +22,27 @@ public class BankSimulatorController {
     // Fetch pending payment attempts directly
     @GetMapping("/pending-requests")
     public ResponseEntity<List<PaymentAttempt>> getPendingRequests() {
-        return ResponseEntity.ok(paymentAttemptRepository.findByStatus(PaymentStatus.PENDING));
+        List<PaymentAttempt> allPending = paymentAttemptRepository.findByStatus(PaymentStatus.PENDING);
+        
+        java.util.Map<String, PaymentAttempt> latestAttempts = new java.util.HashMap<>();
+
+        // Loop through and only keep the newest attempt per subscription
+        for (PaymentAttempt attempt : allPending) {
+            String key = attempt.getSubscription() != null ? 
+                "SUB_" + attempt.getSubscription().getId() : 
+                "ATT_" + attempt.getId();
+
+            PaymentAttempt existing = latestAttempts.get(key);
+            if (existing == null || attempt.getInitiatedAt().isAfter(existing.getInitiatedAt())) {
+                latestAttempts.put(key, attempt);
+            }
+        }
+
+        // Sort them by newest first
+        List<PaymentAttempt> result = new java.util.ArrayList<>(latestAttempts.values());
+        result.sort(java.util.Comparator.comparing(PaymentAttempt::getInitiatedAt).reversed());
+
+        return ResponseEntity.ok(result);
     }
 
     // Process bank callback

@@ -49,7 +49,9 @@ public class WhatsAppLLMService {
         notificationService.sendTemplateNotification(customer.getPhoneNumber(), "recovery_payment_degraded_v1", "en", values);
         
         // Save this outgoing notification to Chat Memory (DB) so we have context for future incoming replies
-        String sentMessage = "System Notification (Payment Failed): " + (explanation != null ? explanation : "Payment failed.");
+        String subContext = attempt.getSubscription() != null ? 
+            String.format("[CONTEXT: Subscription ID: %d] ", attempt.getSubscription().getId()) : "";
+        String sentMessage = subContext + "System Notification (Payment Failed): " + (explanation != null ? explanation : "Payment failed.");
         chatMemory.add(customer.getPhoneNumber(), new AssistantMessage(sentMessage));
     }
 
@@ -75,7 +77,11 @@ public class WhatsAppLLMService {
         notificationService.sendTemplateNotification(customer.getPhoneNumber(), "sub_failed_interactive_v1", "en", values);
         
         // Save this outgoing notification to Chat Memory (DB) so we have context for future incoming replies
-        String sentMessage = "System Notification (Subscription Failed): " + (explanation != null ? explanation : "Subscription failed.");
-        chatMemory.add(customer.getPhoneNumber(), new AssistantMessage(sentMessage));
+        String sentMessage = String.format(
+            "[CONTEXT: Subscription ID: %d, Plan: %s] System Notification (Subscription Failed): %s",
+            subscription.getId(), subscription.getDescription(),
+            explanation != null ? explanation : "Subscription failed."
+        );
+        chatMemory.add("91" + customer.getPhoneNumber(), new AssistantMessage(sentMessage));
     }
 }

@@ -11,6 +11,8 @@ import jakarta.persistence.EntityNotFoundException;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,11 +104,17 @@ public class SubscriptionService {
     @Transactional
     public void processDueSubscriptions() {
         List<Subscription> dueSubscriptions = subscriptionRepository.findByNextChargeDateBeforeAndStatusNot(
-                LocalDateTime.now(), SubscriptionStatus.CANCELLED);
+                LocalDateTime.now(), SubscriptionStatus.PAST_DUE);
 
         for (Subscription subscription : dueSubscriptions) {
             try {
                 log.info("Triggering renewal charge for due subscription ID: {}", subscription.getId());
+                
+                // Prevent continuous retry spam by temporarily pushing the charge date ahead by getTimeSpan.
+                // If payment succeeds, it will be pushed forward properly by the billing cycle length.
+                subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
+                subscriptionRepository.save(subscription);
+                
                 bankSimulatorService.initiateSubscriptionPayment(subscription);
             } catch (Exception e) {
                 log.error("Failed to queue payment attempt for subscription ID {}: {}", subscription.getId(), e.getMessage());
@@ -117,4 +125,5 @@ public class SubscriptionService {
     public List<PaymentAttempt> getAllSubscriptionTransactions() {
         return paymentService.getAllSubscriptionTransactions();
     }
+
 }

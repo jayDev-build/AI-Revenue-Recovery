@@ -1,7 +1,9 @@
 package ai.revenue.recovery.service;
 
+import ai.revenue.recovery.AiTools.SubscriptionTools;
 import ai.revenue.recovery.entity.Customer;
 import ai.revenue.recovery.entity.PromiseToPay;
+import ai.revenue.recovery.entity.Subscription;
 import ai.revenue.recovery.entity.enums.PromiseStatus;
 import ai.revenue.recovery.repository.CustomerRepository;
 import ai.revenue.recovery.repository.PromiseToPayRepository;
@@ -33,16 +35,19 @@ public class WhatsappInteractionService {
     private final WhatsAppNotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final ChatMemory chatMemory;
+    private final SubscriptionTools subscriptionTools;
 
     public WhatsappInteractionService(ChatClient.Builder chatClientBuilder,
                                       CustomerRepository customerRepository,
                                       PromiseToPayRepository promiseToPayRepository,
                                       WhatsAppNotificationService notificationService,
+                                      SubscriptionTools subscriptionTools,
                                       ChatMemory chatMemory) {
         this.chatClient = chatClientBuilder.defaultSystem(
             "You are an AI assistant analyzing a conversation with a customer regarding failed payments or subscriptions.\n" +
             "Based on the conversation history, extract the customer's intent from their latest message.\n" +
-            "Return ONLY a raw JSON object with the following structure (no markdown, no backticks):\n" +
+            "IMPORTANT: If the user promises to pay on a future date, YOU MUST use the provided tool to delay the subscription charge by passing the number of days they requested.\n" +
+            "After you have used any necessary tools, your FINAL text response must be ONLY a raw JSON object with the following structure (no markdown):\n" +
             "{\n" +
             "  \"intent\": \"PROMISE_TO_PAY\" | \"CANCEL_SUBSCRIPTION\" | \"OTHER\",\n" +
             "  \"date\": \"YYYY-MM-DD\" (if they mention a payment date, otherwise null),\n" +
@@ -54,6 +59,7 @@ public class WhatsappInteractionService {
         this.promiseToPayRepository = promiseToPayRepository;
         this.notificationService = notificationService;
         this.chatMemory = chatMemory;
+        this.subscriptionTools = subscriptionTools;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -69,17 +75,13 @@ public class WhatsappInteractionService {
         try {
             // Fetch DB conversation history directly from auto-configured ChatMemory
             List<Message> historyMessages = chatMemory.get(phoneNumber);
-            StringBuilder history = new StringBuilder();
-            if (historyMessages != null) {
-                for (Message msg : historyMessages) {
-                    history.append(msg.toString()).append("\n");
-                }
-            }
-            history.append("USER: ").append(rawMessage).append("\n");
+            
+            Message newUserMessage = new UserMessage(rawMessage);
+            historyMessages.add(newUserMessage);
 
             String jsonResponse = chatClient.prompt()
-                    .user(u -> u.text("Conversation History:\n{history}\n\nBased on the above, process the latest message.")
-                            .param("history", history.toString()))
+                    .messages(historyMessages)
+                    .tools(subscriptionTools)
                     .call()
                     .content();
 
