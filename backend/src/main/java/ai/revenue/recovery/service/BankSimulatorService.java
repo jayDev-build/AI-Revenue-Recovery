@@ -25,13 +25,16 @@ public class BankSimulatorService {
     private final PaymentAttemptRepository paymentAttemptRepository;
     private final PaymentService paymentService;
     private final RazorpayIntegrationService razorpayService;
+    private final ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService;
 
     public BankSimulatorService(PaymentAttemptRepository paymentAttemptRepository,
                                 PaymentService paymentService,
-                                RazorpayIntegrationService razorpayService) {
+                                RazorpayIntegrationService razorpayService,
+                                ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService) {
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.paymentService = paymentService;
         this.razorpayService = razorpayService;
+        this.whatsappLLMService = whatsappLLMService;
     }
 
     /**
@@ -94,9 +97,12 @@ public class BankSimulatorService {
         } else {
             log.warn("Bank simulator rejected payment attempt ID {}", attempt.getId());
             attempt.setStatus(PaymentStatus.FAILED);
-            attempt.setFailureReasonCode(payload.getResponseCode() != null ? payload.getResponseCode().name() : "BANK_DECLINED");
+            String reasonCode = payload.getResponseCode() != null ? payload.getResponseCode().name() : "BANK_DECLINED";
+            attempt.setFailureReasonCode(reasonCode);
             attempt.setResolvedAt(LocalDateTime.now());
             paymentAttemptRepository.save(attempt);
+            
+            whatsappLLMService.sendSubscriptionFailedTemplate(attempt.getCustomer(), attempt.getSubscription(), reasonCode);
         }
     }
 

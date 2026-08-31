@@ -35,6 +35,7 @@ public class PaymentService {
     private final SubscriptionRepository subscriptionRepository;
     private final CustomerService customerService;
     private final ChatClient chatClient;
+    private final ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService;
 
     public PaymentService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
                           PaymentAttemptRepository paymentAttemptRepository,
@@ -43,7 +44,8 @@ public class PaymentService {
                           RazorpayIntegrationService razorpayService,
                           SubscriptionRepository subscriptionRepository,
                           CustomerService customerService,
-                          ChatClient.Builder chatClientBuilder) {
+                          ChatClient.Builder chatClientBuilder,
+                          ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService) {
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
@@ -61,6 +63,7 @@ public class PaymentService {
             
             CRITICAL: Provide a single, plain phrase under 15 words for a MySQL VARCHAR column. No punctuation, no markdown, no fluff.
         """).build();
+        this.whatsappLLMService = whatsappLLMService;
     }
 
     @Transactional
@@ -203,6 +206,7 @@ public class PaymentService {
             log.warn("Failed to fetch AI explanation for reason code '{}': {}", reasonCode, e.getMessage());
         }
 
+        whatsappLLMService.sendPaymentFailedTemplate(attempt.getCustomer(), attempt, explanation);
         writeAuditLog(attempt, "STATUS_CHECK", explanation, "RETRY_SCHEDULED_OR_FAILED", AuditOutcome.FAILED);
     }
 
