@@ -96,6 +96,8 @@ export default function SubscriptionForm({ onSubmitSuccess }) {
           <option value={15}>15 Seconds</option>
           <option value={20}>20 Seconds</option>
           <option value={30}>30 Seconds</option>
+          <option value={86400}>1 Day</option>
+          <option value={2592000}>30 Days</option>
         </select>
       </div>
 

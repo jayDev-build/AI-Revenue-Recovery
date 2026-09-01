@@ -46,11 +46,12 @@ public class WhatsappInteractionService {
         this.chatClient = chatClientBuilder.defaultSystem(
             "You are an AI assistant analyzing a conversation with a customer regarding failed payments or subscriptions.\n" +
             "Based on the conversation history, extract the customer's intent from their latest message.\n" +
-            "IMPORTANT: If the user promises to pay on a future date, YOU MUST use the provided tool to delay the subscription charge by passing the number of days they requested.\n" +
+            "IMPORTANT: If the user promises to pay on a future date or specific time, YOU MUST use the provided tool to delay the subscription charge by passing the exact date and time they requested in ISO-8601 format (e.g. YYYY-MM-DDTHH:MM:SS).\n" +
+            "IMPORTANT: If the user says they need more time, your reply should politely ask them how many days they need or what specific date they can pay on.\n" +
             "After you have used any necessary tools, your FINAL text response must be ONLY a raw JSON object with the following structure (no markdown):\n" +
             "{\n" +
-            "  \"intent\": \"PROMISE_TO_PAY\" | \"CANCEL_SUBSCRIPTION\" | \"OTHER\",\n" +
-            "  \"date\": \"YYYY-MM-DD\" (if they mention a payment date, otherwise null),\n" +
+            "  \"intent\": \"PROMISE_TO_PAY\" | \"ALREADY_PAID\" | \"NEED_MORE_TIME\" | \"CANCEL_SUBSCRIPTION\" | \"OTHER\",\n" +
+            "  \"date\": \"YYYY-MM-DDTHH:MM:SS\" (if they mention a payment date or time, calculate the exact future date and time based on CRITICAL CONTEXT, otherwise null),\n" +
             "  \"confidence\": 0.95,\n" +
             "  \"reply\": \"A short, friendly 1-sentence reply to send back to the user.\"\n" +
             "}"
@@ -63,6 +64,7 @@ public class WhatsappInteractionService {
         this.objectMapper = new ObjectMapper();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void processIncomingMessage(String phoneNumber, String rawMessage) {
         log.info("Processing incoming WhatsApp message from {}", phoneNumber);
 
@@ -74,9 +76,10 @@ public class WhatsappInteractionService {
 
         try {
             // Fetch DB conversation history directly from auto-configured ChatMemory
-            List<Message> historyMessages = chatMemory.get(phoneNumber);
+            List<Message> historyMessages = new java.util.ArrayList<>(chatMemory.get(phoneNumber));
             
-            Message newUserMessage = new UserMessage(rawMessage);
+            String contextStr = "[CRITICAL CONTEXT: The current server date and time is " + LocalDateTime.now().toString() + "]\n\nUser: ";
+            Message newUserMessage = new UserMessage(contextStr + rawMessage);
             historyMessages.add(newUserMessage);
 
             String jsonResponse = chatClient.prompt()
@@ -84,6 +87,14 @@ public class WhatsappInteractionService {
                     .tools(subscriptionTools)
                     .call()
                     .content();
+
+            if (jsonResponse != null) {
+                jsonResponse = jsonResponse.trim();
+                if (jsonResponse.startsWith("```json")) jsonResponse = jsonResponse.substring(7);
+                else if (jsonResponse.startsWith("```")) jsonResponse = jsonResponse.substring(3);
+                if (jsonResponse.endsWith("```")) jsonResponse = jsonResponse.substring(0, jsonResponse.length() - 3);
+                jsonResponse = jsonResponse.trim();
+            }
 
             JsonNode responseNode = objectMapper.readTree(jsonResponse);
             
@@ -96,8 +107,41 @@ public class WhatsappInteractionService {
                 PromiseToPay promise = new PromiseToPay();
                 promise.setCustomer(customer);
                 promise.setRawMessage(rawMessage);
+
+                Subscription linkedSubToUpdate = null;
+                // Find a past_due or cancelled subscription for the customer to link
+                List<Subscription> subs = customer.getSubscriptions();
+                if (subs != null && !subs.isEmpty()) {
+                    Subscription linkedSub = subs.stream()
+                        .filter(s -> ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE.equals(s.getStatus()) || 
+                                     ai.revenue.recovery.entity.enums.SubscriptionStatus.CANCELLED.equals(s.getStatus()))
+                        .findFirst()
+                        .orElse(subs.get(0));
+                    promise.setRelatedEntityType("SUBSCRIPTION");
+                    promise.setRelatedEntityId(linkedSub.getId());
+                    linkedSubToUpdate = linkedSub;
+                }
+
                 try {
-                    promise.setExtractedPromiseDate(LocalDate.parse(dateStr));
+                    // Try to parse as full ISO-8601 Date Time
+                    LocalDateTime promisedDateTime;
+                    try {
+                        promisedDateTime = LocalDateTime.parse(dateStr);
+                    } catch (Exception ex) {
+                        // Fallback to LocalDate if time is missing
+                        promisedDateTime = LocalDate.parse(dateStr).atStartOfDay();
+                    }
+                    promise.setExtractedPromiseDate(promisedDateTime.toLocalDate());
+
+                    if (linkedSubToUpdate != null) {
+                        // Immediately push the nextChargeDate so Bank Simulator stops retrying
+                        linkedSubToUpdate.setNextChargeDate(promisedDateTime);
+                        // We can rely on JPA cascade if Customer is saved, but let's be safe
+                        // Actually, we don't have subscriptionRepository here. 
+                        // But since we didn't inject it, let's use the subscriptionTools which has the repository!
+                        subscriptionTools.delaySubscriptionCharge(linkedSubToUpdate.getId(), promisedDateTime.toString());
+                    }
+
                 } catch (Exception e) {
                     log.warn("Failed to parse date: {}", dateStr);
                 }
@@ -106,6 +150,16 @@ public class WhatsappInteractionService {
                 promise.setCreatedAt(LocalDateTime.now());
                 promiseToPayRepository.save(promise);
                 log.info("Saved PromiseToPay for customer ID {}", customer.getId());
+            } else if ("ALREADY_PAID".equalsIgnoreCase(intent)) {
+                List<PromiseToPay> pendingPromises = promiseToPayRepository.findByCustomerId(customer.getId())
+                        .stream().filter(p -> p.getStatus() == PromiseStatus.PENDING).toList();
+                
+                for (PromiseToPay p : pendingPromises) {
+                    p.setStatus(PromiseStatus.KEPT);
+                    p.setResolvedAt(LocalDateTime.now());
+                    promiseToPayRepository.save(p);
+                }
+                log.info("Marked {} pending promises as KEPT for customer ID {} due to ALREADY_PAID intent.", pendingPromises.size(), customer.getId());
             }
 
             // Save AI reply and User message to memory

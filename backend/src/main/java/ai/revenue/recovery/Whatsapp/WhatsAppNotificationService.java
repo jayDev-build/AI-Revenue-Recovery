@@ -56,6 +56,15 @@ public class WhatsAppNotificationService {
         }
     }
 
+    public void sendPromiseToPayReminder(String toPhoneNumber, String name, String reason, String date) {
+        sendTemplateNotification(
+            toPhoneNumber, 
+            "promise_to_pay_reminder", 
+            "en", 
+            java.util.List.of(name, reason, date)
+        );
+    }
+
     public void sendTextMessage(String toPhoneNumber, String messageContent) {
         String cleanTo = toPhoneNumber.replaceAll("[^0-9]", "");
         if (cleanTo.length() == 10) {

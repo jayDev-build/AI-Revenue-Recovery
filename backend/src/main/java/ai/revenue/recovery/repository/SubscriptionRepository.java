@@ -10,7 +10,7 @@ import java.util.List;
 
 @Repository
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
-    List<Subscription> findByNextChargeDateBeforeAndStatusNot(LocalDateTime now, SubscriptionStatus subscriptionStatus);
+    List<Subscription> findByNextChargeDateBeforeAndStatusIn(LocalDateTime now, List<SubscriptionStatus> statuses);
 
     List<Subscription> findByCustomerId(Long customerId);
 }

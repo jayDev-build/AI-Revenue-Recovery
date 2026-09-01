@@ -65,11 +65,23 @@ public class WhatsappWebhookController {
                             JsonNode message = messages.get(0);
                             String from = message.path("from").asText();
                             
+                            String textBody = null;
                             if (message.has("text")) {
-                                String textBody = message.path("text").path("body").asText();
+                                textBody = message.path("text").path("body").asText();
+                            } else if (message.has("interactive")) {
+                                JsonNode interactive = message.path("interactive");
+                                if (interactive.has("button_reply")) {
+                                    textBody = interactive.path("button_reply").path("title").asText();
+                                } else if (interactive.has("list_reply")) {
+                                    textBody = interactive.path("list_reply").path("title").asText();
+                                }
+                            }
+
+                            if (textBody != null) {
+                                final String finalBody = textBody;
                                 // Process asynchronously to immediately return 200 OK to Meta and prevent retries
                                 java.util.concurrent.CompletableFuture.runAsync(() -> {
-                                    interactionService.processIncomingMessage(from, textBody);
+                                    interactionService.processIncomingMessage(from, finalBody);
                                 });
                             }
                         }

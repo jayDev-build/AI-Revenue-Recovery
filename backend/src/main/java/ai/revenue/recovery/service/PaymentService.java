@@ -339,8 +339,9 @@ public class PaymentService {
             attempt.setStatus(PaymentStatus.CAPTURED);
             attempt.setResolvedAt(LocalDateTime.now());
 
-            // 2. Update subscription schedule
+            // 2. Update subscription schedule and status
             if (subscription != null && subscription.getTimeSpan() != null) {
+                subscription.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
                 subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
                 subscriptionRepository.save(subscription);
             }

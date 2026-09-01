@@ -15,4 +15,11 @@ export const createSubscriptionApi = (payload) => axios.post(`${API_BASE}/api/cr
 export const getAllSubscriptionList = () => axios.get(`${API_BASE}/api/subscriptions`);
 export const getAllPendingBankRequests = () => axios.get(`${API_BASE}/api/bank/pending-requests`)
 export const bankSubscriptionResponse = (payload) => axios.post(`${API_BASE}/api/bank/callback`, payload);
-export const getAllSubscriptionTransactions = () => axios.get(`${API_BASE}/api/subscriptions/transactions`)
+export const getAllSubscriptionTransactions = () => axios.get(`${API_BASE}/api/subscriptions/transactions`);
+
+export const fetchPromisesByCustomer = (customerId) => axios.get(`${API_BASE}/api/promises/customer/${customerId}`);
+export const initiatePromisePaymentApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/initiate-payment`);
+export const payPromiseApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/pay`);
+export const fetchSubscriptionsByCustomer = (customerId) => axios.get(`${API_BASE}/api/subscriptions/customer/${customerId}`);
+export const initiateSubscriptionPaymentApi = (subscriptionId) => axios.post(`${API_BASE}/api/subscriptions/${subscriptionId}/initiate-payment`);
+export const paySubscriptionApi = (subscriptionId) => axios.post(`${API_BASE}/api/subscriptions/${subscriptionId}/pay`);

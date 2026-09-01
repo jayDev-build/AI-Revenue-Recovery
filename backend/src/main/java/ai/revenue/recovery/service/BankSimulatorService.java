@@ -102,6 +102,13 @@ public class BankSimulatorService {
             attempt.setResolvedAt(LocalDateTime.now());
             paymentAttemptRepository.save(attempt);
             
+            Subscription sub = attempt.getSubscription();
+            if (sub != null) {
+                sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE);
+                // Since this is @Transactional, changes to sub are persisted automatically, 
+                // but we rely on Cascade or explicit save. The attempt is linked to sub.
+            }
+
             whatsappLLMService.sendSubscriptionFailedTemplate(attempt.getCustomer(), attempt.getSubscription(), reasonCode);
         }
     }
