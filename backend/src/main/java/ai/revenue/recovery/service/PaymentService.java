@@ -274,11 +274,23 @@ public class PaymentService {
         paymentAttempt.setRazorpayPaymentId(paymentId);
         if ("captured".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.CAPTURED);
-            paymentAttempt.setResolvedAt(LocalDateTime.now());
+            paymentAttempt.setResolvedAt(ai.revenue.recovery.config.AppClock.now());
+            
+            ai.revenue.recovery.entity.Subscription sub = paymentAttempt.getSubscription();
+            if (sub != null) {
+                sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
+                sub.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(sub.getTimeSpan()));
+            }
         } else if ("authorized".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.AUTHORIZED);
         } else if ("failed".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.FAILED);
+            paymentAttempt.setResolvedAt(ai.revenue.recovery.config.AppClock.now());
+            
+            ai.revenue.recovery.entity.Subscription sub = paymentAttempt.getSubscription();
+            if (sub != null) {
+                sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE);
+            }
         } else {
             paymentAttempt.setStatus(PaymentStatus.AMBIGUOUS);
         }
@@ -350,7 +362,7 @@ public class PaymentService {
             // 2. Update subscription schedule and status
             if (subscription != null && subscription.getTimeSpan() != null) {
                 subscription.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
-                subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
+                subscription.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(subscription.getTimeSpan()));
                 subscriptionRepository.save(subscription);
             }
 

@@ -92,7 +92,7 @@ export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, han
 
     const pendingPromises = promises.filter(p => p.status === 'PENDING');
     const brokenCount = promises.filter(p => p.status === 'BROKEN').length;
-    const dueSubscriptions = subscriptions.filter(s => s.status === 'PAST_DUE' || s.status === 'CANCELLED'); // Or just PAST_DUE
+    const dueSubscriptions = subscriptions.filter(s => s.status === 'PAST_DUE' || s.status === 'CANCELLED' || s.status === 'ACTION_REQUIRED');
 
     if (pendingPromises.length === 0 && dueSubscriptions.length === 0 && brokenCount === 0) {
         return null; // Don't show if nothing to do

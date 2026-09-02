@@ -54,21 +54,15 @@ public class SubscriptionService {
 
         Subscription subscription = new Subscription();
         subscription.setCustomer(customer);
-        subscription.setStatus(SubscriptionStatus.PAST_DUE);
+        subscription.setStatus(SubscriptionStatus.PENDING_ACTIVATION);
         subscription.setPlanAmount(request.getAmount());
         subscription.setDescription(request.getDescription());
         subscription.setTimeSpan(request.getTimeSpan());
 
-        LocalDateTime startDateTime = request.getPaymentDateTime() != null ? request.getPaymentDateTime() : LocalDateTime.now();
-        LocalDateTime nextPaymentDateTime = startDateTime.plusSeconds(request.getTimeSpan());
-        subscription.setNextChargeDate(nextPaymentDateTime);
+        LocalDateTime startDateTime = request.getPaymentDateTime() != null ? request.getPaymentDateTime() : ai.revenue.recovery.config.AppClock.now();
+        subscription.setNextChargeDate(startDateTime);
 
-        Subscription savedSubscription = subscriptionRepository.save(subscription);
-
-        // Initiate initial pending payment via BankSimulatorService for approval
-        bankSimulatorService.initiateSubscriptionPayment(savedSubscription);
-
-        return savedSubscription;
+        return subscriptionRepository.save(subscription);
     }
 
     @Transactional(readOnly = true)
@@ -108,7 +102,7 @@ public class SubscriptionService {
     public Subscription paySubscription(Long id) {
         Subscription subscription = getSubscriptionById(id);
         subscription.setStatus(SubscriptionStatus.ACTIVE);
-        subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
+        subscription.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(subscription.getTimeSpan()));
         
         Customer customer = subscription.getCustomer();
         if (customer != null && subscription.getPlanAmount() != null) {
@@ -136,18 +130,15 @@ public class SubscriptionService {
      */
     @Transactional
     public void processDueSubscriptions() {
-        List<Subscription> dueSubscriptions = subscriptionRepository.findByNextChargeDateBeforeAndStatusIn(
-                LocalDateTime.now(), List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE));
+        List<Subscription> dueSubscriptions = subscriptionRepository.findDueSubscriptionsWithNoActiveAttempts(
+                ai.revenue.recovery.config.AppClock.now(), 
+                List.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE, SubscriptionStatus.PENDING_ACTIVATION));
 
         for (Subscription subscription : dueSubscriptions) {
             try {
                 log.info("Triggering renewal charge for due subscription ID: {}", subscription.getId());
                 
-                // Prevent continuous retry spam by temporarily pushing the charge date ahead by getTimeSpan.
-                // If payment succeeds, it will be pushed forward properly by the billing cycle length.
-                subscription.setNextChargeDate(LocalDateTime.now().plusSeconds(subscription.getTimeSpan()));
-                subscriptionRepository.save(subscription);
-                
+                // Do NOT advance nextChargeDate here. It will be advanced upon success, or rescheduled upon failure.
                 bankSimulatorService.initiateSubscriptionPayment(subscription);
             } catch (Exception e) {
                 log.error("Failed to queue payment attempt for subscription ID {}: {}", subscription.getId(), e.getMessage());

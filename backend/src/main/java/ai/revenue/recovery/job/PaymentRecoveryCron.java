@@ -105,6 +105,13 @@ public class PaymentRecoveryCron {
             if ("captured".equalsIgnoreCase(razorpayStatus)) {
                 attempt.setStatus(PaymentStatus.CAPTURED);
                 attempt.setResolvedAt(AppClock.now());
+                
+                ai.revenue.recovery.entity.Subscription sub = attempt.getSubscription();
+                if (sub != null) {
+                    sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
+                    sub.setNextChargeDate(AppClock.now().plusSeconds(sub.getTimeSpan()));
+                }
+                
                 paymentAttemptRepository.save(attempt);
 
                 writeSweeperAudit(attempt,
@@ -135,6 +142,12 @@ public class PaymentRecoveryCron {
         attempt.setStatus(PaymentStatus.FAILED);
         attempt.setFailureReasonCode(reasonCode);
         attempt.setResolvedAt(AppClock.now());
+        
+        ai.revenue.recovery.entity.Subscription sub = attempt.getSubscription();
+        if (sub != null) {
+            sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE);
+        }
+        
         paymentAttemptRepository.save(attempt);
 
         writeSweeperAudit(attempt,
