@@ -48,7 +48,16 @@ public class BankHealthJob {
 
         for (Map.Entry<String, List<PaymentAttempt>> entry : attemptsByBank.entrySet()) {
             String bank = entry.getKey();
-            List<PaymentAttempt> bankAttempts = entry.getValue();
+            
+            // Only count terminal states (CAPTURED, FAILED, REFUNDED) and AMBIGUOUS (simulated drops)
+            // Skip CREATED (user currently in checkout) and PENDING.
+            List<PaymentAttempt> bankAttempts = entry.getValue().stream()
+                    .filter(a -> a.getStatus() != PaymentStatus.CREATED && a.getStatus() != PaymentStatus.PENDING)
+                    .collect(Collectors.toList());
+
+            if (bankAttempts.isEmpty()) {
+                continue;
+            }
 
             int totalAttempts = bankAttempts.size();
             long successCount = bankAttempts.stream()

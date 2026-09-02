@@ -30,6 +30,7 @@ public class PromiseToPay {
 
     private LocalDate extractedPromiseDate;
     private BigDecimal extractedConfidence;
+    private BigDecimal extractedAmount;
 
     @Enumerated(EnumType.STRING)
     private PromiseStatus status;

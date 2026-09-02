@@ -19,13 +19,13 @@ public class SubscriptionTools {
 
     @Tool(description = "tool to delay the next Charge Date Time of subscription")
     public void delaySubscriptionCharge(@ToolParam(description = "Id of the Subscription") Long subscriptionId,
-            @ToolParam(description = "Number of days to delay the payment (e.g. 1 for tomorrow, 7 for next week)") Integer delayDays) {
+            @ToolParam(description = "The exact date and time to delay the payment until, in ISO-8601 format (e.g. '2023-10-05T14:30:00')") String targetDateTimeStr) {
         try {
             Subscription subscription = subscriptionRepository.findById(subscriptionId).get();
-            java.time.LocalDateTime dateTime = java.time.LocalDateTime.now().plusDays(delayDays);
+            java.time.LocalDateTime dateTime = java.time.LocalDateTime.parse(targetDateTimeStr);
             subscription.setNextChargeDate(dateTime);
             subscriptionRepository.save(subscription);
-            System.out.println("Tool successfully delayed subscription " + subscriptionId + " by " + delayDays + " days to " + dateTime);
+            System.out.println("Tool successfully delayed subscription " + subscriptionId + " to exactly " + dateTime);
         } catch (Exception e) {
             System.err.println("Failed to execute tool delaySubscriptionCharge: " + e.getMessage());
         }

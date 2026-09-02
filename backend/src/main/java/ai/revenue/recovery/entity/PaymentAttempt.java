@@ -40,4 +40,10 @@ public class PaymentAttempt {
     private String failureReasonCode;
     private LocalDateTime initiatedAt;
     private LocalDateTime resolvedAt;
+
+    @jakarta.persistence.Transient
+    private Boolean bankDegraded;
+
+    @jakarta.persistence.Transient
+    private String suggestedFallbackMethod;
 }

@@ -5,6 +5,7 @@ import { PaymentStatusCard } from './components/PaymentStatusCard';
 import { BankHealthGrid } from './components/BankHealthGrid';
 import { AuditLogFeed } from './components/AuditLogFeed';
 import RecoveredRevenueCard from './components/RecoveredRevenueCard';
+import { PromisesAndSubscriptionsCard } from './components/PromisesAndSubscriptionsCard';
 import {
   fetchBankHealthApi,
   fetchAuditLogsApi,
@@ -13,7 +14,8 @@ import {
   initiatePaymentApi,
   resolvePaymentApi,
   checkPaymentStatusApi,
-  getRecoveredAmount
+  getRecoveredAmount,
+  injectStalePaymentApi
 } from './services/api';
 
 const BANK_OPTIONS = ['HDFC UPI', 'ICICI NetBanking', 'SBI UPI', 'Bank X'];
@@ -88,12 +90,18 @@ function App() {
   useEffect(() => {
     const syncData = async () => {
       await Promise.all([fetchBankHealth(), fetchAuditLogs(), fetchLatestPayment()]);
+      try {
+        const res = await getRecoveredAmount(userId);
+        setRecovered(res.data);
+      } catch (err) {
+        console.error(err);
+      }
     };
 
     syncData();
     const interval = setInterval(syncData, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userId]);
 
   const handleSeedFailures = async () => {
     setLoading(true);
@@ -104,6 +112,21 @@ function App() {
       fetchAuditLogs();
     } catch (err) {
       console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInjectStalePayment = async () => {
+    setLoading(true);
+    try {
+      await injectStalePaymentApi({ customerId: userId, amount, bankName: checkoutBank });
+      alert('Injected a 16-minute-old stale payment. The sweeper cron will auto-resolve it within 10 seconds.');
+      fetchAuditLogs();
+      fetchLatestPayment();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to inject stale payment.');
     } finally {
       setLoading(false);
     }
@@ -127,7 +150,7 @@ function App() {
     }
   };
 
-  const openRazorpayCheckout = (paymentData) => {
+  const openRazorpayCheckout = (paymentData, onSuccess) => {
     if (!window.Razorpay) {
       alert('Razorpay SDK failed to load. Ensure checkout.js is in index.html');
       return;
@@ -140,32 +163,27 @@ function App() {
       name: 'AI Revenue Recovery',
       description: 'Test Transaction',
       order_id: paymentData.razorpayOrderId,
-      handler: () => checkStatus(paymentData.id),
+      handler: () => {
+        if (onSuccess) {
+            onSuccess();
+        } else {
+            checkStatus(paymentData.id);
+        }
+      },
       prefill: { name: 'Demo User', email: 'demo@example.com', contact: '9999999999' },
       theme: { color: '#3399cc' }
     };
 
     const rzp1 = new window.Razorpay(options);
-    rzp1.on('payment.failed', () => checkStatus(paymentData.id));
-    rzp1.on('payment.success', () => checkStatus(paymentData.id));
+    rzp1.on('payment.failed', () => {
+        if (!onSuccess) checkStatus(paymentData.id);
+    });
+    rzp1.on('payment.success', () => {
+        if (!onSuccess) checkStatus(paymentData.id);
+    });
     rzp1.open();
   };
 
-  const handleResolve = async (id) => {
-    setLoading(true);
-    try {
-      const res = await resolvePaymentApi(id);
-      setPaymentStatus(res.data);
-      await fetchAuditLogs();
-      await handleResolveAmount(userId);
-
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-
-  };
 
   const handleResolveAmount = async (id) => {
     setLoading(true);
@@ -200,11 +218,13 @@ function App() {
           setSeedBank={setSeedBank}
           bankOptions={BANK_OPTIONS}
           onSeedFailures={handleSeedFailures}
+          onInjectStalePayment={handleInjectStalePayment}
           loading={loading}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-6">
+            <PromisesAndSubscriptionsCard userId={userId} openRazorpayCheckout={openRazorpayCheckout} handleResolveAmount={handleResolveAmount} />
             <CheckoutForm
               userId={userId}
               setUserId={setUserId}
@@ -223,7 +243,6 @@ function App() {
             <PaymentStatusCard
               paymentStatus={paymentStatus}
               onCheckStatus={checkStatus}
-              onResolve={handleResolve}
               loading={loading}
             />
           </div>

@@ -81,7 +81,7 @@ export function CheckoutForm({
             className="w-4 h-4 text-purple-600 bg-slate-900 border-slate-600 rounded focus:ring-purple-500 focus:ring-2"
           />
           <label htmlFor="simulateDrop" className="ml-3 text-sm font-medium text-slate-300">
-            Simulate Network Drop (Lost Ack on Webhook)
+            Chaos Test: Simulate Gateway Timeout
           </label>
         </div>
 

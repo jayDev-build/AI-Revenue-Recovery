@@ -17,6 +17,8 @@ export default function SubscriptionList({ subscriptions = [], onStatusChange })
                 return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>;
             case "PAUSED":
                 return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">Paused</span>;
+            case "PENDING_ACTIVATION":
+                return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/20">Pending Activation</span>;
             default:
                 return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{status}</span>;
         }
@@ -50,12 +52,14 @@ export default function SubscriptionList({ subscriptions = [], onStatusChange })
                                     <td className="p-3 text-xs text-slate-400">{sub.nextChargeDate ? new Date(sub.nextChargeDate).toLocaleString() : "N/A"}</td>
                                     <td className="p-3">{getStatusBadge(sub.status)}</td>
                                     <td className="p-3 text-right">
-                                        <button
-                                            onClick={() => handleToggleStatus(sub.id, sub.status)}
-                                            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 hover:bg-slate-800 transition-colors"
-                                        >
-                                            {sub.status === "ACTIVE" ? "Pause" : "Activate"}
-                                        </button>
+                                        {sub.status !== "PENDING_ACTIVATION" && (
+                                            <button
+                                                onClick={() => handleToggleStatus(sub.id, sub.status)}
+                                                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 hover:bg-slate-800 transition-colors"
+                                            >
+                                                {sub.status === "ACTIVE" ? "Pause" : "Activate"}
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

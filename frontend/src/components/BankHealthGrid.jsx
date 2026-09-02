@@ -23,9 +23,8 @@ export function BankHealthGrid({ bankHealth, highlightedBanks }) {
             return (
               <div
                 key={bank.id}
-                className={`p-4 rounded-xl border transition-all duration-700 ${
-                  isHighlighted ? 'ring-2 ring-purple-500 scale-[1.02] shadow-[0_0_15px_rgba(168,85,247,0.5)]' : ''
-                } ${isDegraded ? 'bg-red-900/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'}`}
+                className={`p-4 rounded-xl border transition-all duration-700 ${isHighlighted ? 'ring-2 ring-purple-500 scale-[1.02] shadow-[0_0_15px_rgba(168,85,247,0.5)]' : ''
+                  } ${isDegraded ? 'bg-red-900/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'}`}
               >
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="font-bold text-slate-200">{bank.bankName}</h4>
@@ -38,6 +37,14 @@ export function BankHealthGrid({ bankHealth, highlightedBanks }) {
                   <span className="text-slate-500">Success Rate</span>
                   <span className={isDegraded ? 'text-red-400 font-mono font-bold' : 'text-green-400 font-mono font-bold'}>{pct}%</span>
                 </div>
+                {bank.baselineSuccessRate !== undefined && (
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="text-slate-500">Absolute Dip</span>
+                    <span className="text-slate-400 font-mono font-bold">
+                      {(Math.max(0, bank.baselineSuccessRate - bank.successRate) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                )}
                 <div className="w-full bg-slate-800 rounded-full h-1.5 mb-3 overflow-hidden">
                   <div className={`h-1.5 rounded-full ${isDegraded ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }}></div>
                 </div>

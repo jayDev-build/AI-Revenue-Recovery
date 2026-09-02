@@ -1,6 +1,8 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export function Header({ seedBank, setSeedBank, bankOptions, onSeedFailures, loading }) {
+export function Header({ seedBank, setSeedBank, bankOptions, onSeedFailures, onInjectStalePayment, loading }) {
+  const navigate = useNavigate();
   return (
     <header className="flex flex-col md:flex-row justify-between items-center pb-6 border-b border-slate-700 gap-4">
       <div>
@@ -15,6 +17,12 @@ export function Header({ seedBank, setSeedBank, bankOptions, onSeedFailures, loa
           </div>
         </div>
         <p className="text-slate-400 mt-2">Flow 1: Payment Degradation & Lost Acknowledgment</p>
+        <button
+          onClick={() => navigate('/subscription')}
+          className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-900/50 transition-all"
+        >
+          Manage Subscriptions &rarr;
+        </button>
       </div>
 
       <div className="flex items-center space-x-3 bg-slate-800 p-3 rounded-xl border border-slate-700">
@@ -34,6 +42,13 @@ export function Header({ seedBank, setSeedBank, bankOptions, onSeedFailures, loa
           className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-red-900/50 transition-all disabled:opacity-50"
         >
           {loading ? 'Simulating...' : 'Simulate 30 Failures'}
+        </button>
+        <button
+          onClick={onInjectStalePayment}
+          disabled={loading}
+          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-amber-900/50 transition-all disabled:opacity-50"
+        >
+          Inject Stale Payment
         </button>
       </div>
     </header>

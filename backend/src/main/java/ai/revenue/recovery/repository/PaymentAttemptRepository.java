@@ -19,4 +19,7 @@ public interface PaymentAttemptRepository extends JpaRepository<PaymentAttempt, 
     List<PaymentAttempt> findByStatusInAndSubscriptionNotNull(List<PaymentStatus> created);
 
     List<PaymentAttempt> findBySubscriptionNotNullAndStatusNotIn(List<PaymentStatus> pending);
+
+    List<PaymentAttempt> findByStatusInAndInitiatedAtBeforeAndSubscriptionIsNull(
+            List<PaymentStatus> statuses, LocalDateTime cutoff);
 }

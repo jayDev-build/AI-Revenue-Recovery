@@ -26,15 +26,18 @@ public class BankSimulatorService {
     private final PaymentService paymentService;
     private final RazorpayIntegrationService razorpayService;
     private final ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService;
+    private final ai.revenue.recovery.repository.AuditLogRepository auditLogRepository;
 
     public BankSimulatorService(PaymentAttemptRepository paymentAttemptRepository,
                                 PaymentService paymentService,
                                 RazorpayIntegrationService razorpayService,
-                                ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService) {
+                                ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService,
+                                ai.revenue.recovery.repository.AuditLogRepository auditLogRepository) {
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.paymentService = paymentService;
         this.razorpayService = razorpayService;
         this.whatsappLLMService = whatsappLLMService;
+        this.auditLogRepository = auditLogRepository;
     }
 
     /**
@@ -102,6 +105,32 @@ public class BankSimulatorService {
             attempt.setResolvedAt(LocalDateTime.now());
             paymentAttemptRepository.save(attempt);
             
+            Subscription sub = attempt.getSubscription();
+            if (sub != null) {
+                if (payload.getResponseCode() == BankResponseCode.EXPIRED_CARD || payload.getResponseCode() == BankResponseCode.CARD_BLOCKED) {
+                    sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTION_REQUIRED);
+                    
+                    ai.revenue.recovery.entity.AuditLog auditLog = ai.revenue.recovery.entity.AuditLog.builder()
+                            .flowType(ai.revenue.recovery.entity.enums.FlowType.SUBSCRIPTION_RECOVERY)
+                            .entityId(sub.getId())
+                            .entityType("subscription")
+                            .decision("TERMINAL_FAILURE_HALT")
+                            .paymentOrderId(attempt.getRazorpayOrderId())
+                            .reasoning("[SUBSCRIPTION_HALTED] Subscription " + sub.getId() + " suspended due to terminal failure. Awaiting manual user payment.")
+                            .actionTaken("SUBSCRIPTION_HALTED")
+                            .outcome(ai.revenue.recovery.entity.enums.AuditOutcome.FAILED)
+                            .attemptNumber(1)
+                            .createdAt(ai.revenue.recovery.config.AppClock.now())
+                            .build();
+                    auditLogRepository.save(auditLog);
+                    log.info("[SUBSCRIPTION_HALTED] Subscription {} suspended due to terminal failure.", sub.getId());
+                } else {
+                    sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE);
+                    // Schedule next retry delay to prevent immediate spamming
+                    sub.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(sub.getTimeSpan()));
+                }
+            }
+
             whatsappLLMService.sendSubscriptionFailedTemplate(attempt.getCustomer(), attempt.getSubscription(), reasonCode);
         }
     }
