@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function PaymentStatusCard({ paymentStatus, onCheckStatus, onResolve, loading }) {
+export function PaymentStatusCard({ paymentStatus, onCheckStatus, loading }) {
     if (!paymentStatus) return null;
 
     // Configuration for status pill badges and left accent border line
@@ -16,17 +16,14 @@ export function PaymentStatusCard({ paymentStatus, onCheckStatus, onResolve, loa
 
     const currentConfig = statusConfig[paymentStatus.status] || statusConfig.DEFAULT;
 
-    // Resolve action is restricted strictly to CREATED, AUTHORIZED, and AMBIGUOUS
-    const canResolve = ['CREATED', 'AUTHORIZED', 'AMBIGUOUS'].includes(paymentStatus.status);
-
     return (
         <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl relative overflow-hidden transition-all duration-500">
             <div className={`absolute top-0 left-0 w-1 h-full ${currentConfig.bar}`}></div>
             <div className="pl-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex justify-between items-center">
                     Latest Attempt Status
-                    <button 
-                        onClick={() => onCheckStatus(paymentStatus.id)} 
+                    <button
+                        onClick={() => onCheckStatus(paymentStatus.id)}
                         className="text-blue-400 hover:text-blue-300 transition-colors"
                         title="Refresh Status"
                     >
@@ -36,12 +33,33 @@ export function PaymentStatusCard({ paymentStatus, onCheckStatus, onResolve, loa
                     </button>
                 </h3>
 
+                {paymentStatus.bankDegraded && (
+                    <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/40 rounded-lg flex items-start animate-pulse">
+                        <svg className="w-6 h-6 text-amber-400 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <div>
+                            <h4 className="text-amber-400 font-bold text-sm">⚡ Server Intervention Active</h4>
+                            <p className="text-amber-300 text-xs mt-1">
+                                <strong>{paymentStatus.customerBank}</strong> was flagged as degraded by the recovery engine at the moment of payment.
+                                Consider retrying with <strong>{paymentStatus.suggestedFallbackMethod || 'CARD'}</strong> for higher success probability.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-y-3 text-sm mb-5">
                     <span className="text-slate-500">Attempt ID:</span>
                     <span className="font-mono text-slate-300 text-right">{paymentStatus.id}</span>
                     <span className="text-slate-500">Order ID:</span>
                     <span className="font-mono text-blue-400 text-right truncate" title={paymentStatus.razorpayOrderId}>
                         {paymentStatus.razorpayOrderId || 'N/A'}
+                    </span>
+                    <span className="text-slate-500">Bank:</span>
+                    <span className="font-mono text-slate-300 text-right">{paymentStatus.customerBank || 'N/A'}</span>
+                    <span className="text-slate-500">Amount:</span>
+                    <span className="font-mono text-slate-300 text-right">
+                        {paymentStatus.amount ? `₹${paymentStatus.amount}` : 'N/A'}
                     </span>
                     <span className="text-slate-500 font-medium">Status:</span>
                     <div className="text-right">
@@ -50,41 +68,6 @@ export function PaymentStatusCard({ paymentStatus, onCheckStatus, onResolve, loa
                         </span>
                     </div>
                 </div>
-
-                {canResolve && (
-                    <div className="pt-4 border-t border-slate-700">
-                        <div className="flex items-start mb-4">
-                            <svg className="w-5 h-5 text-amber-500 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <p className="text-xs text-amber-400/90">
-                                Transaction in <strong className="font-mono">{paymentStatus.status}</strong> state. Run direct Gateway reconciliation to sync ground truth.
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => onResolve(paymentStatus.id)}
-                            disabled={loading}
-                            className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-lg font-bold transition-all text-sm shadow-lg shadow-orange-900/30 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {loading ? (
-                                <span className="flex items-center">
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Resolving...
-                                </span>
-                            ) : (
-                                <>
-                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    ⚡ Resolve Status (Self-Heal)
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -14,7 +14,8 @@ import {
   initiatePaymentApi,
   resolvePaymentApi,
   checkPaymentStatusApi,
-  getRecoveredAmount
+  getRecoveredAmount,
+  injectStalePaymentApi
 } from './services/api';
 
 const BANK_OPTIONS = ['HDFC UPI', 'ICICI NetBanking', 'SBI UPI', 'Bank X'];
@@ -116,6 +117,21 @@ function App() {
     }
   };
 
+  const handleInjectStalePayment = async () => {
+    setLoading(true);
+    try {
+      await injectStalePaymentApi({ customerId: userId, amount, bankName: checkoutBank });
+      alert('Injected a 16-minute-old stale payment. The sweeper cron will auto-resolve it within 10 seconds.');
+      fetchAuditLogs();
+      fetchLatestPayment();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to inject stale payment.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleInitiatePayment = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -168,21 +184,6 @@ function App() {
     rzp1.open();
   };
 
-  const handleResolve = async (id) => {
-    setLoading(true);
-    try {
-      const res = await resolvePaymentApi(id);
-      setPaymentStatus(res.data);
-      await fetchAuditLogs();
-      await handleResolveAmount(userId);
-
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-
-  };
 
   const handleResolveAmount = async (id) => {
     setLoading(true);
@@ -217,6 +218,7 @@ function App() {
           setSeedBank={setSeedBank}
           bankOptions={BANK_OPTIONS}
           onSeedFailures={handleSeedFailures}
+          onInjectStalePayment={handleInjectStalePayment}
           loading={loading}
         />
 
@@ -241,7 +243,6 @@ function App() {
             <PaymentStatusCard
               paymentStatus={paymentStatus}
               onCheckStatus={checkStatus}
-              onResolve={handleResolve}
               loading={loading}
             />
           </div>

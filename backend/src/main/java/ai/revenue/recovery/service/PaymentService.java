@@ -79,6 +79,10 @@ public class PaymentService {
         attempt.setCustomerBank(bankName != null ? bankName : "Bank X");
         attempt.setInitiatedAt(LocalDateTime.now());
 
+        // ── BANK HEALTH INTERVENTION ─────────────────────────────────
+        // Check if the selected bank is currently degraded and flag the response.
+        checkBankHealthAndFlag(attempt);
+
         try {
             Map<String, String> notes = Map.of(
                     "bank_name", attempt.getCustomerBank(),
@@ -300,6 +304,10 @@ public class PaymentService {
         List<BankHealthSnapshot> adjustedSnapshots = new ArrayList<>();
 
         for (BankHealthSnapshot snapshot : latestSnapshots.values()) {
+            if ("Bank Simulator".equalsIgnoreCase(snapshot.getBankName())) {
+                continue;
+            }
+
             if (snapshot.getWindowEnd() != null && snapshot.getWindowEnd().isBefore(oneMinuteAgo)) {
                 BankHealthSnapshot healthy = new BankHealthSnapshot();
                 healthy.setId(snapshot.getId());
@@ -375,5 +383,56 @@ public class PaymentService {
 
     public List<PaymentAttempt> getAllSubscriptionTransactions() {
         return paymentAttemptRepository.findBySubscriptionNotNullAndStatusNotIn(List.of(PaymentStatus.PENDING, PaymentStatus.CREATED));
+    }
+
+    /**
+     * Checks the latest BankHealthSnapshot for the payment's bank.
+     * If degraded, sets advisory @Transient flags on the attempt
+     * and writes an INTERVENTION audit log entry.
+     */
+    private void checkBankHealthAndFlag(PaymentAttempt attempt) {
+        String bankName = attempt.getCustomerBank();
+        if (bankName == null) return;
+
+        try {
+            // Find the latest snapshot for this bank
+            List<BankHealthSnapshot> allSnapshots = bankHealthSnapshotRepository.findAll();
+            BankHealthSnapshot latestForBank = null;
+
+            for (BankHealthSnapshot snapshot : allSnapshots) {
+                if (bankName.equalsIgnoreCase(snapshot.getBankName())) {
+                    if (latestForBank == null || snapshot.getId() > latestForBank.getId()) {
+                        latestForBank = snapshot;
+                    }
+                }
+            }
+
+            if (latestForBank != null && Boolean.TRUE.equals(latestForBank.getIsDegraded())) {
+                attempt.setBankDegraded(true);
+                attempt.setSuggestedFallbackMethod("CARD");
+
+                // Write intervention audit log
+                AuditLog interventionLog = AuditLog.builder()
+                        .flowType(FlowType.BANK_INTERVENTION)
+                        .entityId(attempt.getId())
+                        .entityType("payment_attempt")
+                        .decision("BANK_HEALTH_CHECK")
+                        .reasoning("[INTERVENTION] Detected degraded performance on " + bankName +
+                                ". Success rate: " + latestForBank.getSuccessRate() +
+                                ". Recommending alternative method.")
+                        .actionTaken("FLAGGED_DEGRADED")
+                        .outcome(AuditOutcome.PENDING)
+                        .attemptNumber(1)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+
+                auditLogRepository.save(interventionLog);
+
+                log.info("[INTERVENTION] Detected degraded performance on {}. Recommending fallback to CARD.",
+                        bankName);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to check bank health for {}: {}", bankName, e.getMessage());
+        }
     }
 }

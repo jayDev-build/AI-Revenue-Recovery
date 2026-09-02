@@ -7,6 +7,7 @@ export const fetchAuditLogsApi = () => axios.get(`${API_BASE}/api/audit-logs/rec
 export const fetchLatestPaymentApi = () => axios.get(`${API_BASE}/api/payments/latest`);
 export const seedFailuresApi = (bankName, failureCount = 30) =>
     axios.post(`${API_BASE}/demo/seed-failures`, { bankName, failureCount });
+export const injectStalePaymentApi = (payload) => axios.post(`${API_BASE}/api/demo/inject-stale-payment`, payload);
 export const initiatePaymentApi = (payload) => axios.post(`${API_BASE}/payments/initiate`, payload);
 export const resolvePaymentApi = (id) => axios.post(`${API_BASE}/payments/${id}/resolve`);
 export const checkPaymentStatusApi = (id) => axios.get(`${API_BASE}/payments/${id}/status`);
