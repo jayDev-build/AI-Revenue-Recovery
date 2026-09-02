@@ -98,32 +98,7 @@ public class SubscriptionService {
         return updateSubscriptionStatus(id, SubscriptionStatus.PAUSED);
     }
 
-    @Transactional
-    public Subscription paySubscription(Long id) {
-        Subscription subscription = getSubscriptionById(id);
-        subscription.setStatus(SubscriptionStatus.ACTIVE);
-        subscription.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(subscription.getTimeSpan()));
-        
-        Customer customer = subscription.getCustomer();
-        if (customer != null && subscription.getPlanAmount() != null) {
-            customer.setRecovered(customer.getRecovered().add(subscription.getPlanAmount()));
-            customerRepository.save(customer);
-        }
 
-        // Find any PENDING/CREATED attempts in Bank Simulator for this subscription and mark them CAPTURED
-        List<PaymentAttempt> pendingAttempts = paymentAttemptRepository.findByStatusInAndSubscriptionNotNull(
-                List.of(ai.revenue.recovery.entity.enums.PaymentStatus.PENDING, ai.revenue.recovery.entity.enums.PaymentStatus.CREATED));
-                
-        for (PaymentAttempt attempt : pendingAttempts) {
-            if (attempt.getSubscription().getId().equals(subscription.getId())) {
-                attempt.setStatus(ai.revenue.recovery.entity.enums.PaymentStatus.CAPTURED);
-                attempt.setResolvedAt(LocalDateTime.now());
-                paymentAttemptRepository.save(attempt);
-            }
-        }
-
-        return subscriptionRepository.save(subscription);
-    }
 
     /**
      * Scheduled / manual trigger to scan and queue payments for subscriptions due for renewal.

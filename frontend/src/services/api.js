@@ -9,7 +9,6 @@ export const seedFailuresApi = (bankName, failureCount = 30) =>
     axios.post(`${API_BASE}/demo/seed-failures`, { bankName, failureCount });
 export const injectStalePaymentApi = (payload) => axios.post(`${API_BASE}/api/demo/inject-stale-payment`, payload);
 export const initiatePaymentApi = (payload) => axios.post(`${API_BASE}/payments/initiate`, payload);
-export const resolvePaymentApi = (id) => axios.post(`${API_BASE}/payments/${id}/resolve`);
 export const checkPaymentStatusApi = (id) => axios.get(`${API_BASE}/payments/${id}/status`);
 export const getRecoveredAmount = (id) => axios.get(`${API_BASE}/api/recovered-amount/${id}`);
 export const createSubscriptionApi = (payload) => axios.post(`${API_BASE}/api/create-subscription`, payload);
@@ -20,7 +19,5 @@ export const getAllSubscriptionTransactions = () => axios.get(`${API_BASE}/api/s
 
 export const fetchPromisesByCustomer = (customerId) => axios.get(`${API_BASE}/api/promises/customer/${customerId}`);
 export const initiatePromisePaymentApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/initiate-payment`);
-export const payPromiseApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/pay`);
 export const fetchSubscriptionsByCustomer = (customerId) => axios.get(`${API_BASE}/api/subscriptions/customer/${customerId}`);
 export const initiateSubscriptionPaymentApi = (subscriptionId) => axios.post(`${API_BASE}/api/subscriptions/${subscriptionId}/initiate-payment`);
-export const paySubscriptionApi = (subscriptionId) => axios.post(`${API_BASE}/api/subscriptions/${subscriptionId}/pay`);

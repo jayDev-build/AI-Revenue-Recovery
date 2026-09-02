@@ -24,7 +24,6 @@ export default function SubscriptionForm({ onSubmitSuccess }) {
     };
 
     try {
-      console.log(payload);
       const res = await createSubscriptionApi(payload);
       if (onSubmitSuccess) onSubmitSuccess(res.data);
     } catch (err) {

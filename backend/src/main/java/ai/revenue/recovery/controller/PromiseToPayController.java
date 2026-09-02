@@ -72,28 +72,4 @@ public class PromiseToPayController {
         }
     }
 
-    @PostMapping("/{promiseId}/pay")
-    public ResponseEntity<?> payPromise(@PathVariable Long promiseId) {
-        Optional<PromiseToPay> optionalPromise = promiseToPayRepository.findById(promiseId);
-        if (optionalPromise.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        PromiseToPay promise = optionalPromise.get();
-        promise.setStatus(PromiseStatus.KEPT);
-        promise.setResolvedAt(LocalDateTime.now());
-        promiseToPayRepository.save(promise);
-
-        if ("SUBSCRIPTION".equals(promise.getRelatedEntityType()) && promise.getRelatedEntityId() != null) {
-            subscriptionService.paySubscription(promise.getRelatedEntityId());
-        } else {
-            ai.revenue.recovery.entity.Customer customer = promise.getCustomer();
-            if (customer != null) {
-                customer.setRecovered(customer.getRecovered().add(new BigDecimal("500.00")));
-                customerRepository.save(customer);
-            }
-        }
-
-        return ResponseEntity.ok().body("{\"message\": \"Promise marked as KEPT successfully\"}");
-    }
 }
