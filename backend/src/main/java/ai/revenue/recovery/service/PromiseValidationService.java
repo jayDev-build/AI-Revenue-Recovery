@@ -46,7 +46,7 @@ public class PromiseValidationService {
 
     /**
      * Deterministic validation pipeline for LLM-extracted promise data.
-     * Returns the created PromiseToPay with either CONFIRMED or NEEDS_HUMAN_REVIEW status.
+     * Returns the created PromiseToPay with either PENDING or NEEDS_HUMAN_REVIEW status.
      */
     @Transactional
     public PromiseToPay validateAndCreatePromise(Customer customer, LlmExtractionResult extraction,
@@ -106,8 +106,8 @@ public class PromiseValidationService {
         }
 
         if (validationFailures.isEmpty()) {
-            // All validations passed — CONFIRMED
-            promise.setStatus(PromiseStatus.CONFIRMED);
+            // All validations passed — PENDING
+            promise.setStatus(PromiseStatus.PENDING);
             promiseToPayRepository.save(promise);
 
             // Delay subscription charge
@@ -122,9 +122,9 @@ public class PromiseValidationService {
             writeGuardrailAudit(promise,
                     "All validations passed. Date: " + promisedDate + ", Confidence: " +
                             extraction.getConfidenceScore(),
-                    "PROMISE_CONFIRMED", AuditOutcome.SUCCESS);
+                    "PROMISE_PENDING", AuditOutcome.SUCCESS);
 
-            log.info("[GUARDRAIL] Promise ID {} CONFIRMED for customer ID {}",
+            log.info("[GUARDRAIL] Promise ID {} PENDING for customer ID {}",
                     promise.getId(), customer.getId());
         } else {
             // Validation failed — NEEDS_HUMAN_REVIEW + create confirmation state
@@ -168,7 +168,7 @@ public class PromiseValidationService {
         PromiseToPay promise = promiseToPayRepository.findById(state.getPendingPromiseId())
                 .orElseThrow(() -> new RuntimeException("Promise not found: " + state.getPendingPromiseId()));
 
-        promise.setStatus(PromiseStatus.CONFIRMED);
+        promise.setStatus(PromiseStatus.PENDING);
         promise.setResolvedAt(AppClock.now());
         promiseToPayRepository.save(promise);
 
@@ -191,7 +191,7 @@ public class PromiseValidationService {
                 "Customer confirmed via WhatsApp reply. Promise ID: " + promise.getId(),
                 "HUMAN_CONFIRMED", AuditOutcome.SUCCESS);
 
-        log.info("[GUARDRAIL] Promise ID {} CONFIRMED by customer via WhatsApp.", promise.getId());
+        log.info("[GUARDRAIL] Promise ID {} PENDING (confirmed by customer via WhatsApp).", promise.getId());
     }
 
     /**

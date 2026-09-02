@@ -12,7 +12,6 @@ import {
   fetchLatestPaymentApi,
   seedFailuresApi,
   initiatePaymentApi,
-  resolvePaymentApi,
   checkPaymentStatusApi,
   getRecoveredAmount,
   injectStalePaymentApi
@@ -189,7 +188,6 @@ function App() {
     setLoading(true);
     try {
       const res = await getRecoveredAmount(id);
-      console.log(res);
       setRecovered(res.data);
     } catch (err) {
       console.error(err);

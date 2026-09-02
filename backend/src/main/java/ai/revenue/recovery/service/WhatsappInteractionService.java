@@ -91,7 +91,7 @@ public class WhatsappInteractionService {
             String normalized = rawMessage.trim().toUpperCase();
 
             if (AFFIRMATIVES.contains(normalized)) {
-                // Customer confirmed — promote promise to CONFIRMED
+                // Customer confirmed — promote promise to PENDING
                 try {
                     promiseValidationService.confirmPendingPromise(phoneNumber);
                     String reply = "✅ Your payment promise has been confirmed! We'll remind you on the scheduled date.";

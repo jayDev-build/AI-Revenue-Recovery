@@ -78,10 +78,7 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getPaymentStatus(id));
     }
 
-    @PostMapping("/payments/{id}/resolve")
-    public ResponseEntity<PaymentAttempt> resolvePayment(@PathVariable Long id) {
-        return ResponseEntity.ok(paymentService.resolvePayment(id));
-    }
+
 
     @PostMapping("/razorpay/webhook")
     public ResponseEntity<String> resolvePayment(@RequestBody Map<String, Object> payload) {

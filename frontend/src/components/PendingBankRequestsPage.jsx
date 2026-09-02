@@ -23,7 +23,6 @@ export default function PendingBankRequestsPage() {
         setLoading(true);
         try {
             const res = await getAllPendingBankRequests();
-            console.log(res);
             if (res.status === 200) {
                 const data = await res.data;
                 setPendingRequests(data);
@@ -52,7 +51,6 @@ export default function PendingBankRequestsPage() {
     const handleSendResponse = async (item) => {
         const responseCode = selectedResponses[item.id] || "SUCCESS";
         setSubmittingIds((prev) => ({ ...prev, [item.id]: true }));
-        console.log(item);
         const payload = {
             subscriptionId: item.subscription ? item.subscription.id : null,
             razorpayOrderId: item.razorpayOrderId,

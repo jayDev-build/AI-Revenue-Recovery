@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
     fetchPromisesByCustomer, 
-    payPromiseApi, 
     initiatePromisePaymentApi,
-    fetchSubscriptionsByCustomer, 
-    paySubscriptionApi,
+    fetchSubscriptionsByCustomer,
     initiateSubscriptionPaymentApi
 } from '../services/api';
 
@@ -47,7 +45,6 @@ export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, han
                 type: 'PROMISE'
             };
             openRazorpayCheckout(mockPaymentData, async () => {
-                await payPromiseApi(promiseId);
                 fetchData();
                 if (handleResolveAmount) {
                     await handleResolveAmount(userId);
@@ -76,7 +73,6 @@ export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, han
                 type: 'SUBSCRIPTION'
             };
             openRazorpayCheckout(mockPaymentData, async () => {
-                await paySubscriptionApi(subscriptionId);
                 fetchData();
                 if (handleResolveAmount) {
                     await handleResolveAmount(userId);

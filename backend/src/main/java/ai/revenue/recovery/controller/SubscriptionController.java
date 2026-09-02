@@ -68,9 +68,5 @@ public class SubscriptionController {
         }
     }
 
-    @PostMapping("/subscriptions/{id}/pay")
-    public ResponseEntity<?> paySubscription(@org.springframework.web.bind.annotation.PathVariable Long id) {
-        subscriptionService.paySubscription(id);
-        return ResponseEntity.ok().body("{\"message\": \"Subscription paid successfully\"}");
-    }
+
 }
