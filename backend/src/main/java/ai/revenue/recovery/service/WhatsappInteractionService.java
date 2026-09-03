@@ -34,6 +34,32 @@ public class WhatsappInteractionService {
     private static final Set<String> AFFIRMATIVES = Set.of("YES", "Y", "HAAN", "CONFIRM", "OK");
     private static final Set<String> NEGATIVES = Set.of("NO", "N", "NAHI", "CANCEL");
 
+    private static final String SYSTEM_PROMPT_TEMPLATE = 
+        "You are an Autonomous Revenue Recovery Agent for a subscription service.\n" +
+        "Your SOLE objective is to negotiate and secure a strict Promise to Pay (PTP) date for failed subscription renewals.\n\n" +
+        "### CONTEXT:\n" +
+        "- Customer Name: {customer_name}\n" +
+        "- Outstanding Amount: ₹{subscription_amount}\n" +
+        "- Current Date: {current_date}\n\n" +
+        "### STRICT RULES & CONSTRAINTS (CRITICAL):\n" +
+        "1. NO DISCOUNTS: You must recover the exact amount of ₹{subscription_amount}. Never accept or negotiate a partial payment.\n" +
+        "2. NO SERVICE GUARANTEES: You DO NOT have the authority to grant or guarantee service access. If the user asks if their account will remain active, you MUST reply strictly with: \"Account access is managed by the billing system based on your grace period. My role is only to log your payment date.\" Never use the words \"your plan will remain active\" or \"maintained.\"\n" +
+        "3. EXACT DATES ONLY: If a user gives a relative time (\"in 2 days\", \"next week\"), calculate the exact date based on {current_date}.\n" +
+        "4. NO ENDLESS CHITCHAT: Once the user provides a clear date, confirm the date, state that the billing system will automatically retry the charge on that day, and END the negotiation. Do not answer redundant questions.\n" +
+        "5. NO HALLUCINATION: Do not invent policies, consequences, or features.\n\n" +
+        "### TONE:\n" +
+        "Professional, firm, and transactional. You are not a friend; you are a financial system interface.\n\n" +
+        "### REQUIRED OUTPUT (JSON extraction via tools):\n" +
+        "When a valid date is reached, extract the absolute date and the exact amount.\n" +
+        "Your FINAL text response must be ONLY a raw JSON object with the following structure (no markdown):\n" +
+        "{\n" +
+        "  \"intent\": \"PROMISE_TO_PAY\" | \"ALREADY_PAID\" | \"NEED_MORE_TIME\" | \"CANCEL_SUBSCRIPTION\" | \"OTHER\",\n" +
+        "  \"date\": \"YYYY-MM-DDTHH:MM:SS\" (if they mention a payment date or time, calculate the exact future date and time based on Current Date, otherwise null),\n" +
+        "  \"amount\": null (if they mention a specific payment amount, extract it as a number, otherwise null),\n" +
+        "  \"confidence\": 0.95,\n" +
+        "  \"reply\": \"A short, firm, and transactional 1-sentence reply to send back to the user.\"\n" +
+        "}";
+
     private final ChatClient chatClient;
     private final CustomerRepository customerRepository;
     private final PromiseToPayRepository promiseToPayRepository;
@@ -50,20 +76,7 @@ public class WhatsappInteractionService {
                                       SubscriptionTools subscriptionTools,
                                       ChatMemory chatMemory,
                                       PromiseValidationService promiseValidationService) {
-        this.chatClient = chatClientBuilder.defaultSystem(
-            "You are an AI assistant analyzing a conversation with a customer regarding failed payments or subscriptions.\n" +
-            "Based on the conversation history, extract the customer's intent from their latest message.\n" +
-            "IMPORTANT: If the user promises to pay on a future date or specific time, YOU MUST use the provided tool to delay the subscription charge by passing the exact date and time they requested in ISO-8601 format (e.g. YYYY-MM-DDTHH:MM:SS).\n" +
-            "IMPORTANT: If the user says they need more time, your reply should politely ask them how many days they need or what specific date they can pay on.\n" +
-            "After you have used any necessary tools, your FINAL text response must be ONLY a raw JSON object with the following structure (no markdown):\n" +
-            "{\n" +
-            "  \"intent\": \"PROMISE_TO_PAY\" | \"ALREADY_PAID\" | \"NEED_MORE_TIME\" | \"CANCEL_SUBSCRIPTION\" | \"OTHER\",\n" +
-            "  \"date\": \"YYYY-MM-DDTHH:MM:SS\" (if they mention a payment date or time, calculate the exact future date and time based on CRITICAL CONTEXT, otherwise null),\n" +
-            "  \"amount\": null (if they mention a specific payment amount, extract it as a number, otherwise null),\n" +
-            "  \"confidence\": 0.95,\n" +
-            "  \"reply\": \"A short, friendly 1-sentence reply to send back to the user.\"\n" +
-            "}"
-        ).build();
+        this.chatClient = chatClientBuilder.build();
         this.customerRepository = customerRepository;
         this.promiseToPayRepository = promiseToPayRepository;
         this.notificationService = notificationService;
@@ -130,16 +143,34 @@ public class WhatsappInteractionService {
 
         // ── EXISTING LLM FLOW ──────────────────────────────────────────
         try {
+            BigDecimal subAmount = BigDecimal.ZERO;
+            if (customer.getSubscriptions() != null && !customer.getSubscriptions().isEmpty()) {
+                ai.revenue.recovery.entity.Subscription linkedSub = customer.getSubscriptions().stream()
+                    .filter(s -> ai.revenue.recovery.entity.enums.SubscriptionStatus.PAST_DUE.equals(s.getStatus()) ||
+                                 ai.revenue.recovery.entity.enums.SubscriptionStatus.CANCELLED.equals(s.getStatus()))
+                    .findFirst()
+                    .orElse(customer.getSubscriptions().get(0));
+                if (linkedSub != null && linkedSub.getPlanAmount() != null) {
+                    subAmount = linkedSub.getPlanAmount();
+                }
+            }
+            final String finalSubAmount = subAmount.toString();
+            final String finalCustomerName = customer.getName() != null ? customer.getName() : "Customer";
+
             // Fetch DB conversation history directly from auto-configured ChatMemory
             List<Message> historyMessages = new java.util.ArrayList<>(chatMemory.get(phoneNumber));
             
-            String contextStr = "[CRITICAL CONTEXT: The current server date and time is " + LocalDateTime.now().toString() + "]\n\nUser: ";
-            Message newUserMessage = new UserMessage(contextStr + rawMessage);
+            Message newUserMessage = new UserMessage(rawMessage);
             historyMessages.add(newUserMessage);
 
+            String finalSystemPrompt = SYSTEM_PROMPT_TEMPLATE
+                    .replace("{customer_name}", finalCustomerName)
+                    .replace("{subscription_amount}", finalSubAmount)
+                    .replace("{current_date}", LocalDateTime.now().toString());
+
             String jsonResponse = chatClient.prompt()
+                    .system(finalSystemPrompt)
                     .messages(historyMessages)
-                    .tools(subscriptionTools)
                     .call()
                     .content();
 

@@ -36,6 +36,7 @@ public class PaymentService {
     private final CustomerService customerService;
     private final ChatClient chatClient;
     private final ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService;
+    private final PromiseToPayRepository promiseToPayRepository;
 
     public PaymentService(BankHealthSnapshotRepository bankHealthSnapshotRepository,
                           PaymentAttemptRepository paymentAttemptRepository,
@@ -45,7 +46,8 @@ public class PaymentService {
                           SubscriptionRepository subscriptionRepository,
                           CustomerService customerService,
                           ChatClient.Builder chatClientBuilder,
-                          ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService) {
+                          ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService,
+                          PromiseToPayRepository promiseToPayRepository) {
         this.bankHealthSnapshotRepository = bankHealthSnapshotRepository;
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.customerRepository = customerRepository;
@@ -64,6 +66,7 @@ public class PaymentService {
             CRITICAL: Provide a single, plain phrase under 15 words for a MySQL VARCHAR column. No punctuation, no markdown, no fluff.
         """).build();
         this.whatsappLLMService = whatsappLLMService;
+        this.promiseToPayRepository = promiseToPayRepository;
     }
 
     @Transactional
@@ -90,8 +93,10 @@ public class PaymentService {
             String orderId = razorpayService.createOrder(amount, "receipt_" + System.currentTimeMillis(), notes);
             attempt.setRazorpayOrderId(orderId);
 
-            if (Math.random() < 0.15 || simulateDrop) {
+            if (simulateDrop) {
                 attempt.setStatus(PaymentStatus.AMBIGUOUS);
+                attempt.setInitiatedAt(ai.revenue.recovery.config.AppClock.now().minusMinutes(16));
+                log.info("Backdated AMBIGUOUS payment attempt by 16 minutes to accelerate cron recovery demo.");
             } else {
                 attempt.setStatus(PaymentStatus.CREATED);
             }
@@ -258,6 +263,14 @@ public class PaymentService {
 
         if (notes != null && "true".equals(String.valueOf(notes.get("simulate_drop")))) {
             log.info("DEMO BYPASS: Webhook swallowed for testing. Order: {}", orderId);
+            if (orderId != null) {
+                PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
+                if (paymentAttempt != null) {
+                    paymentAttempt.setInitiatedAt(ai.revenue.recovery.config.AppClock.now().minusMinutes(16));
+                    paymentAttemptRepository.save(paymentAttempt);
+                    log.info("Backdated payment attempt {} by 16 minutes to accelerate cron recovery demo.", orderId);
+                }
+            }
             return status;
         }
 
@@ -268,6 +281,37 @@ public class PaymentService {
 
         PaymentAttempt paymentAttempt = paymentAttemptRepository.findByRazorpayOrderId(orderId);
         if (paymentAttempt == null) {
+            // Handle PromiseToPay webhook resolution
+            if (notes != null && notes.containsKey("promise_id")) {
+                try {
+                    Long promiseId = Long.valueOf(String.valueOf(notes.get("promise_id")));
+                    ai.revenue.recovery.entity.PromiseToPay promise = promiseToPayRepository.findById(promiseId).orElse(null);
+                    if (promise != null) {
+                        if ("captured".equalsIgnoreCase(status)) {
+                            promise.setStatus(ai.revenue.recovery.entity.enums.PromiseStatus.KEPT);
+                            promise.setResolvedAt(ai.revenue.recovery.config.AppClock.now());
+                            
+                            if ("SUBSCRIPTION".equals(promise.getRelatedEntityType()) && promise.getRelatedEntityId() != null) {
+                                ai.revenue.recovery.entity.Subscription sub = subscriptionRepository.findById(promise.getRelatedEntityId()).orElse(null);
+                                if (sub != null) {
+                                    sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
+                                    sub.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(sub.getTimeSpan()));
+                                    subscriptionRepository.save(sub);
+                                }
+                            }
+                        } else if ("failed".equalsIgnoreCase(status)) {
+                            promise.setStatus(ai.revenue.recovery.entity.enums.PromiseStatus.BROKEN);
+                            promise.setResolvedAt(ai.revenue.recovery.config.AppClock.now());
+                        }
+                        promiseToPayRepository.save(promise);
+                        log.info("Webhook updated PromiseToPay ID {} based on orderId {}", promiseId, orderId);
+                        return status;
+                    }
+                } catch (Exception e) {
+                    log.error("Error processing promise payment webhook: {}", e.getMessage());
+                }
+            }
+            
             log.warn("Received webhook for untracked orderId: {}", orderId);
             return status;
         }
