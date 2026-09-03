@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
     fetchPromisesByCustomer, 
     initiatePromisePaymentApi,
+    verifyPromisePaymentApi,
     fetchSubscriptionsByCustomer,
-    initiateSubscriptionPaymentApi
+    initiateSubscriptionPaymentApi,
+    simulateRazorpayWebhook
 } from '../services/api';
 
 export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, handleResolveAmount }) {
@@ -45,6 +47,7 @@ export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, han
                 type: 'PROMISE'
             };
             openRazorpayCheckout(mockPaymentData, async () => {
+                await verifyPromisePaymentApi(promiseId);
                 fetchData();
                 if (handleResolveAmount) {
                     await handleResolveAmount(userId);
@@ -112,8 +115,9 @@ export function PromisesAndSubscriptionsCard({ userId, openRazorpayCheckout, han
                         {pendingPromises.map(p => (
                             <div key={p.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border border-slate-700">
                                 <div>
-                                    <p className="text-sm text-white">Promise on {p.extractedPromiseDate}</p>
-                                    <p className="text-xs text-slate-400">"{p.rawMessage}"</p>
+                                    <p className="text-sm font-medium text-white">{p.displayDescription || 'Promise to Pay'}</p>
+                                    <p className="text-sm text-slate-300">Amount: ₹{p.displayAmount || '---'} | Due: {p.extractedPromiseDate}</p>
+                                    <p className="text-xs text-slate-500 italic mt-1">"{p.rawMessage}"</p>
                                 </div>
                                 <button
                                     onClick={() => handlePayPromise(p.id)}

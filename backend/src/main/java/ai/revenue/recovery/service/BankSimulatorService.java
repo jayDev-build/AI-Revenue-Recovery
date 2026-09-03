@@ -50,6 +50,13 @@ public class BankSimulatorService {
             throw new IllegalArgumentException("Subscription cannot be null");
         }
 
+        // Clean up previous pending attempts using a bulk update (0 reads, 1 write)
+        paymentAttemptRepository.supersedePendingAttemptsForSubscription(
+                subscription, 
+                "SUPERSEDED_BY_NEW_REQUEST", 
+                LocalDateTime.now()
+        );
+
         Customer customer = subscription.getCustomer();
 
         PaymentAttempt attempt = new PaymentAttempt();

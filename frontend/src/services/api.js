@@ -19,5 +19,7 @@ export const getAllSubscriptionTransactions = () => axios.get(`${API_BASE}/api/s
 
 export const fetchPromisesByCustomer = (customerId) => axios.get(`${API_BASE}/api/promises/customer/${customerId}`);
 export const initiatePromisePaymentApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/initiate-payment`);
+export const verifyPromisePaymentApi = (promiseId) => axios.post(`${API_BASE}/api/promises/${promiseId}/verify`);
 export const fetchSubscriptionsByCustomer = (customerId) => axios.get(`${API_BASE}/api/subscriptions/customer/${customerId}`);
 export const initiateSubscriptionPaymentApi = (subscriptionId) => axios.post(`${API_BASE}/api/subscriptions/${subscriptionId}/initiate-payment`);
+export const simulateRazorpayWebhook = (payload) => axios.post(`${API_BASE}/razorpay/webhook`, payload);

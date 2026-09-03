@@ -37,4 +37,10 @@ public class PromiseToPay {
 
     private LocalDateTime createdAt;
     private LocalDateTime resolvedAt;
+
+    @Transient
+    private BigDecimal displayAmount;
+
+    @Transient
+    private String displayDescription;
 }
