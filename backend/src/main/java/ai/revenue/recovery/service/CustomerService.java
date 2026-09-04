@@ -34,7 +34,8 @@ public class CustomerService {
     }
 
     public Customer getCustomer(Long id) {
-        return customerRepository.findById(id).get();
+        return customerRepository.findById(id)
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Customer not found with ID: " + id));
     }
 
     public Customer findByEmailAndPassword(CustomerLoginRequest request){
