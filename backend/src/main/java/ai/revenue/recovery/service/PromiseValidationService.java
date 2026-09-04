@@ -91,14 +91,23 @@ public class PromiseValidationService {
                     " is below threshold " + MIN_CONFIDENCE);
         }
 
-        // 4. Create PromiseToPay
-        PromiseToPay promise = new PromiseToPay();
+        // 4. Find existing active promise or create a new one
+        List<PromiseToPay> existingPromises = promiseToPayRepository.findByCustomerId(customer.getId());
+        PromiseToPay promise = existingPromises.stream()
+                .filter(p -> p.getStatus() == PromiseStatus.PENDING || p.getStatus() == PromiseStatus.NEEDS_HUMAN_REVIEW)
+                .filter(p -> linkedSub == null || (linkedSub.getId().equals(p.getRelatedEntityId()) && "SUBSCRIPTION".equals(p.getRelatedEntityType())))
+                .findFirst()
+                .orElse(new PromiseToPay());
+
         promise.setCustomer(customer);
         promise.setRawMessage(rawMessage);
         promise.setExtractedPromiseDate(promisedDate);
         promise.setExtractedConfidence(BigDecimal.valueOf(extraction.getConfidenceScore()));
         promise.setExtractedAmount(extractedAmount);
-        promise.setCreatedAt(AppClock.now());
+        
+        if (promise.getId() == null) {
+            promise.setCreatedAt(AppClock.now());
+        }
 
         if (linkedSub != null) {
             promise.setRelatedEntityType("SUBSCRIPTION");

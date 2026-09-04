@@ -28,7 +28,7 @@ public class BankHealthJob {
     }
 
     // Runs every 60 seconds
-    @Scheduled(fixedRate = 60000)
+    @Scheduled(fixedRate = 10000)
     public void computeBankHealthSnapshots() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime oneMinuteAgo = now.minusMinutes(1);
@@ -48,8 +48,9 @@ public class BankHealthJob {
 
         for (Map.Entry<String, List<PaymentAttempt>> entry : attemptsByBank.entrySet()) {
             String bank = entry.getKey();
-            
-            // Only count terminal states (CAPTURED, FAILED, REFUNDED) and AMBIGUOUS (simulated drops)
+
+            // Only count terminal states (CAPTURED, FAILED, REFUNDED) and AMBIGUOUS
+            // (simulated drops)
             // Skip CREATED (user currently in checkout) and PENDING.
             List<PaymentAttempt> bankAttempts = entry.getValue().stream()
                     .filter(a -> a.getStatus() != PaymentStatus.CREATED && a.getStatus() != PaymentStatus.PENDING)

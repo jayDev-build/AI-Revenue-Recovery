@@ -95,8 +95,7 @@ public class PaymentService {
 
             if (simulateDrop) {
                 attempt.setStatus(PaymentStatus.AMBIGUOUS);
-                attempt.setInitiatedAt(ai.revenue.recovery.config.AppClock.now().minusMinutes(16));
-                log.info("Backdated AMBIGUOUS payment attempt by 16 minutes to accelerate cron recovery demo.");
+                log.info("Marked payment as AMBIGUOUS for Gateway Timeout demo.");
             } else {
                 attempt.setStatus(PaymentStatus.CREATED);
             }
@@ -176,7 +175,10 @@ public class PaymentService {
                 }
 
                 Customer customer = attempt.getCustomer();
-                customer.setRecovered(customer.getRecovered().add(attempt.getAmount()));
+                if (customer != null) {
+                    customer.setRecovered(customer.getRecovered().add(attempt.getAmount()));
+                    customerRepository.save(customer);
+                }
                 return paymentAttemptRepository.save(attempt);
 
             } else if ("failed".equalsIgnoreCase(razorpayStatus)) {
@@ -325,6 +327,12 @@ public class PaymentService {
                 sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
                 sub.setNextChargeDate(ai.revenue.recovery.config.AppClock.now().plusSeconds(sub.getTimeSpan()));
             }
+            
+            Customer customer = paymentAttempt.getCustomer();
+            if (customer != null) {
+                customer.setRecovered(customer.getRecovered().add(paymentAttempt.getAmount()));
+                customerRepository.save(customer);
+            }
         } else if ("authorized".equalsIgnoreCase(status)) {
             paymentAttempt.setStatus(PaymentStatus.AUTHORIZED);
         } else if ("failed".equalsIgnoreCase(status)) {
@@ -356,7 +364,25 @@ public class PaymentService {
             }
         }
 
+        List<String> defaultBanks = List.of("HDFC UPI", "ICICI NetBanking", "SBI UPI", "Bank X");
         LocalDateTime oneMinuteAgo = LocalDateTime.now().minusMinutes(1);
+        
+        for (String bankName : defaultBanks) {
+            if (!latestSnapshots.containsKey(bankName)) {
+                BankHealthSnapshot defaultSnapshot = new BankHealthSnapshot();
+                defaultSnapshot.setBankName(bankName);
+                defaultSnapshot.setPaymentMethod("UPI");
+                defaultSnapshot.setWindowStart(oneMinuteAgo);
+                defaultSnapshot.setWindowEnd(LocalDateTime.now());
+                defaultSnapshot.setTotalAttempts(0);
+                defaultSnapshot.setSuccessCount(0);
+                defaultSnapshot.setSuccessRate(BigDecimal.ONE);
+                defaultSnapshot.setBaselineSuccessRate(new BigDecimal("0.95"));
+                defaultSnapshot.setIsDegraded(false);
+                latestSnapshots.put(bankName, defaultSnapshot);
+            }
+        }
+
         List<BankHealthSnapshot> adjustedSnapshots = new ArrayList<>();
 
         for (BankHealthSnapshot snapshot : latestSnapshots.values()) {

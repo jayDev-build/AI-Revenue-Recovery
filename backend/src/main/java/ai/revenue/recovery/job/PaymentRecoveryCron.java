@@ -29,17 +29,20 @@ public class PaymentRecoveryCron {
     private final RazorpayIntegrationService razorpayService;
     private final ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService;
     private final PromiseConfirmationStateRepository confirmationStateRepository;
+    private final ai.revenue.recovery.repository.CustomerRepository customerRepository;
 
     public PaymentRecoveryCron(PaymentAttemptRepository paymentAttemptRepository,
                                AuditLogRepository auditLogRepository,
                                RazorpayIntegrationService razorpayService,
                                ai.revenue.recovery.Whatsapp.WhatsAppLLMService whatsappLLMService,
-                               PromiseConfirmationStateRepository confirmationStateRepository) {
+                               PromiseConfirmationStateRepository confirmationStateRepository,
+                               ai.revenue.recovery.repository.CustomerRepository customerRepository) {
         this.paymentAttemptRepository = paymentAttemptRepository;
         this.auditLogRepository = auditLogRepository;
         this.razorpayService = razorpayService;
         this.whatsappLLMService = whatsappLLMService;
         this.confirmationStateRepository = confirmationStateRepository;
+        this.customerRepository = customerRepository;
     }
 
     /**
@@ -47,7 +50,7 @@ public class PaymentRecoveryCron {
      * Uses fixedDelay (not fixedRate) to prevent overlapping executions
      * when Razorpay calls take 3-5 seconds per payment.
      */
-    @Scheduled(fixedDelay = 10000)
+    @Scheduled(fixedDelay = 15000)
     public void sweepStalePayments() {
         LocalDateTime cutoff = AppClock.now().minusMinutes(15);
 
@@ -110,6 +113,12 @@ public class PaymentRecoveryCron {
                 if (sub != null) {
                     sub.setStatus(ai.revenue.recovery.entity.enums.SubscriptionStatus.ACTIVE);
                     sub.setNextChargeDate(AppClock.now().plusSeconds(sub.getTimeSpan()));
+                }
+                
+                ai.revenue.recovery.entity.Customer customer = attempt.getCustomer();
+                if (customer != null) {
+                    customer.setRecovered(customer.getRecovered().add(attempt.getAmount()));
+                    customerRepository.save(customer);
                 }
                 
                 paymentAttemptRepository.save(attempt);
