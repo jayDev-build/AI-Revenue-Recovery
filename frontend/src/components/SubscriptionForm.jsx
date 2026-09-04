@@ -4,7 +4,7 @@ import { createSubscriptionApi } from "../services/api";
 export default function SubscriptionForm({ onSubmitSuccess }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    customerId: 101,
+    customerId: 1,
     amount: 1499.00,
     description: "Monthly Premium Plan",
     paymentDateTime: new Date(Date.now() - new Date().getTimezoneOffset() * 60000 + 10000).toISOString().slice(0, 16), // Default 10 sec in future local time
@@ -95,6 +95,7 @@ export default function SubscriptionForm({ onSubmitSuccess }) {
           <option value={15}>15 Seconds</option>
           <option value={20}>20 Seconds</option>
           <option value={30}>30 Seconds</option>
+          <option value={60}>1 Minute</option>
           <option value={86400}>1 Day</option>
           <option value={2592000}>30 Days</option>
         </select>
