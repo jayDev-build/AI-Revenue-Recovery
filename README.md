@@ -5,8 +5,7 @@ AI Revenue Recovery is a full-stack application built to automate and optimize t
 ### Core Workflow
 1. **Intelligent Engagement:** The system uses **Spring AI** to dynamically generate personalized WhatsApp messages for customers who have missed a payment. These are delivered via the **Meta WhatsApp Business API**.
 2. **Promise to Pay (PTP):** The AI negotiates a "Promise to Pay" (PTP) arrangement with the customer based on strict persona instructions.
-3. **Frictionless Payments:** When the customer is ready, the system provides a secure payment link generated via **Razorpay**. 
-4. **Automated Reconciliation:** Upon successful payment, Razorpay webhooks instantly notify the backend to automatically mark the PTP as fulfilled and update the customer's status in the MySQL database.
+3. **Automated Reconciliation:** Upon successful payment, Razorpay webhooks instantly notify the backend to automatically mark the PTP as fulfilled and update the customer's status in the MySQL database.
 
 ### Tech Stack
 - **Backend:** Spring Boot (Java 17), Spring AI, MySQL, Razorpay Java SDK.
